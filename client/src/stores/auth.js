@@ -78,6 +78,38 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.user;
   }
 
+  async function uploadAvatar(file, onProgress) {
+    const form = new FormData();
+    form.append('avatar', file);
+    const { data } = await api.post('/users/me/avatar', form, {
+      timeout: 60000,
+      onUploadProgress: (e) => e.total && onProgress?.(Math.round((e.loaded / e.total) * 100)),
+    });
+    user.value = data.user;
+  }
+
+  async function removeAvatar() {
+    const { data } = await api.delete('/users/me/avatar');
+    user.value = data.user;
+  }
+
+  /** The server rotates our token and signs out every other session. */
+  async function changePassword(payload) {
+    const { data } = await api.patch('/users/me/password', payload);
+    const realtime = useRealtimeStore();
+    realtime.disconnect();
+    setSession(data);
+  }
+
+  async function deleteAccount(password) {
+    await api.delete('/users/me', { data: { password } });
+    logout();
+  }
+
+  function adjustCount(key, delta) {
+    if (user.value) user.value[key] = Math.max(0, (user.value[key] || 0) + delta);
+  }
+
   return {
     token,
     user,
@@ -92,5 +124,10 @@ export const useAuthStore = defineStore('auth', () => {
     updateSettings,
     saveLocation,
     clearLocation,
+    uploadAvatar,
+    removeAvatar,
+    changePassword,
+    deleteAccount,
+    adjustCount,
   };
 });

@@ -6,6 +6,7 @@ import { Connection, User } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { emitToUser } from '../socket/emitter.js';
 import { STATUS, decorateUsers, findPair } from '../services/social.js';
+import { notify, clearRequestNotifications, markRequestHandled } from '../services/notifications.js';
 import { validate, badRequest, notFound } from '../utils/http.js';
 
 const router = Router();
@@ -18,6 +19,8 @@ function notifyNetworkChanged(...userIds) {
 }
 
 async function sendRequestEvent(row, requester) {
+  await clearRequestNotifications(row.id);
+  await notify({ userId: row.addresseeId, actorId: row.requesterId, type: 'connection_request', entityId: row.id });
   emitToUser(row.addresseeId, 'connection:request', {
     connectionId: row.id,
     user: requester.toPublic(),
@@ -28,6 +31,8 @@ async function sendRequestEvent(row, requester) {
 async function acceptRow(row) {
   await row.update({ status: 'accepted', respondedAt: new Date() });
   const addressee = await User.findByPk(row.addresseeId);
+  await markRequestHandled(row.addresseeId, row.id);
+  await notify({ userId: row.requesterId, actorId: row.addresseeId, type: 'connection_accepted', entityId: row.id });
   emitToUser(row.requesterId, 'connection:accepted', {
     connectionId: row.id,
     user: addressee.toPublic(),
@@ -138,6 +143,7 @@ router.post('/requests/:id/accept', async (req, res) => {
 router.post('/requests/:id/decline', async (req, res) => {
   const row = await findIncomingRequest(req.params.id, req.user);
   await row.update({ status: 'declined', respondedAt: new Date() });
+  await markRequestHandled(req.user.id, row.id);
   notifyNetworkChanged(req.user.id);
   res.json({ status: STATUS.NONE });
 });
@@ -151,9 +157,11 @@ router.delete('/:userId', async (req, res) => {
 
   if (row.status === 'pending' && row.addresseeId === me.id) {
     await row.update({ status: 'declined', respondedAt: new Date() });
+    await markRequestHandled(me.id, row.id);
     notifyNetworkChanged(me.id);
   } else {
     const wasConnected = row.status === 'accepted';
+    if (!wasConnected) await clearRequestNotifications(row.id);
     await row.destroy();
     if (wasConnected) emitToUser(otherId, 'connection:removed', { userId: me.id });
     notifyNetworkChanged(me.id, otherId);

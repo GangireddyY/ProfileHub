@@ -19,4 +19,5 @@ export const env = {
     .filter(Boolean),
   databaseUrl: process.env.DATABASE_URL || '',
   dbStorage: process.env.DB_STORAGE || './data/profilehub.sqlite',
+  uploadDir: process.env.UPLOAD_DIR || './uploads',
 };

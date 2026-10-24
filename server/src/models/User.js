@@ -13,7 +13,7 @@ export class User extends Model {
 
   /** Full profile for the account owner. */
   toSelf() {
-    const { passwordHash, ...rest } = this.get({ plain: true });
+    const { passwordHash, passwordChangedAt, ...rest } = this.get({ plain: true });
     return { ...rest, online: this.visiblyOnline, hasLocation: this.hasLocation };
   }
 
@@ -51,6 +51,7 @@ User.init(
       },
     },
     passwordHash: { type: DataTypes.STRING, allowNull: false },
+    passwordChangedAt: { type: DataTypes.DATE, allowNull: true },
     headline: { type: DataTypes.STRING(160), allowNull: false, defaultValue: '' },
     profession: {
       type: DataTypes.STRING(32),
@@ -83,5 +84,6 @@ User.init(
     tableName: 'users',
     indexes: [{ fields: ['profession'] }, { fields: ['latitude', 'longitude'] }],
     defaultScope: { attributes: { exclude: ['passwordHash'] } },
+    scopes: { withPassword: { attributes: { include: ['passwordHash'] } } },
   },
 );

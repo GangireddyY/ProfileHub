@@ -10,6 +10,9 @@ import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import connectionRoutes from './routes/connections.js';
 import messageRoutes from './routes/messages.js';
+import accountRoutes from './routes/account.js';
+import notificationRoutes from './routes/notifications.js';
+import { AVATAR_DIR } from './services/avatars.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -38,10 +41,17 @@ export function createApp() {
 
   app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
   app.use('/api/auth', authRoutes);
+  app.use('/api/users/me', accountRoutes);
   app.use('/api/users', userRoutes);
   app.use('/api/connections', connectionRoutes);
   app.use('/api/messages', messageRoutes);
+  app.use('/api/notifications', notificationRoutes);
   app.use('/api', notFoundHandler);
+
+  app.use(
+    '/uploads/avatars',
+    express.static(AVATAR_DIR, { maxAge: '30d', immutable: true, index: false, fallthrough: false }),
+  );
 
   // Serve the built Vue app (npm run build) from the same origin in production.
   if (fs.existsSync(clientDist)) {

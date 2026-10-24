@@ -1,7 +1,7 @@
 import { Server } from 'socket.io';
 import { env } from '../config/env.js';
 import { User } from '../models/index.js';
-import { verifyToken } from '../utils/token.js';
+import { verifyToken, isTokenStale } from '../utils/token.js';
 import { sendMessage } from '../services/messages.js';
 import { areConnected } from '../services/social.js';
 import { setIo, userRoom, broadcast } from './emitter.js';
@@ -27,10 +27,10 @@ export function initSocket(httpServer) {
 
   io.use(async (socket, next) => {
     try {
-      const { sub } = verifyToken(socket.handshake.auth?.token);
-      const exists = await User.count({ where: { id: sub } });
-      if (!exists) throw new Error('missing user');
-      socket.data.userId = sub;
+      const payload = verifyToken(socket.handshake.auth?.token);
+      const user = await User.findByPk(payload.sub, { attributes: ['id', 'passwordChangedAt'] });
+      if (!user || isTokenStale(user, payload)) throw new Error('invalid session');
+      socket.data.userId = user.id;
       next();
     } catch {
       next(new Error('Unauthorized'));

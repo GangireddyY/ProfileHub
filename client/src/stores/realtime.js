@@ -19,16 +19,25 @@ export const useRealtimeStore = defineStore('realtime', () => {
     const chat = useChatStore();
 
     const s = io(import.meta.env.VITE_SOCKET_URL || undefined, {
-      auth: { token: auth.token },
+      // Evaluated on every (re)connect so a rotated token is always used.
+      auth: (cb) => cb({ token: useAuthStore().token }),
       reconnectionDelayMax: 8000,
     });
+    const isCurrent = () => socket.value === s;
 
     s.on('connect', () => {
       connected.value = true;
       chat.loadConversations().catch(() => {});
     });
-    s.on('disconnect', () => (connected.value = false));
+    s.on('disconnect', (reason) => {
+      if (!isCurrent()) return;
+      connected.value = false;
+      // A server-initiated disconnect (e.g. password changed elsewhere) won't auto-retry; reconnecting
+      // re-runs auth, which signs this tab out if its token is no longer valid.
+      if (reason === 'io server disconnect') setTimeout(() => isCurrent() && s.connect(), 500);
+    });
     s.on('connect_error', (err) => {
+      if (!isCurrent()) return;
       connected.value = false;
       if (err.message === 'Unauthorized') window.dispatchEvent(new CustomEvent('auth:expired'));
     });
@@ -56,6 +65,8 @@ export const useRealtimeStore = defineStore('realtime', () => {
         action: { label: 'Message', to: `/messages/${user.id}` },
       });
     });
+    s.on('notification:new', () => auth.adjustCount('unreadNotifications', 1));
+
     s.on('network:changed', () => {
       networkVersion.value++;
       auth.fetchMe().catch(() => {});

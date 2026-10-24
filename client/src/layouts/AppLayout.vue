@@ -1,7 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Compass, Users, MessageCircle, Settings, LogOut, UserRound, Sun, Moon, WifiOff } from 'lucide-vue-next';
+import { Compass, Users, MessageCircle, Settings, LogOut, UserRound, Sun, Moon, WifiOff, Bell } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -78,6 +78,20 @@ function logout() {
             </span>
           </Transition>
 
+          <RouterLink
+            to="/notifications"
+            class="icon-btn"
+            :class="{ 'is-active': route.name === 'notifications' }"
+            :aria-label="me?.unreadNotifications ? `Notifications, ${me.unreadNotifications} unread` : 'Notifications'"
+          >
+            <span class="topnav__icon">
+              <Bell />
+              <span v-if="me?.unreadNotifications" class="count-badge">
+                {{ me.unreadNotifications > 99 ? '99+' : me.unreadNotifications }}
+              </span>
+            </span>
+          </RouterLink>
+
           <button
             type="button"
             class="icon-btn"
@@ -113,7 +127,7 @@ function logout() {
     </header>
 
     <main class="shell__main" :class="{ 'is-full': route.meta.fullHeight }">
-      <RouterView v-slot="{ Component, route: r }">
+      <RouterView v-if="me" v-slot="{ Component, route: r }">
         <Transition name="page" mode="out-in">
           <component :is="Component" :key="r.meta.fullHeight ? r.name : r.fullPath" />
         </Transition>
@@ -264,6 +278,10 @@ function logout() {
 .icon-btn svg {
   width: 20px;
   height: 20px;
+}
+.icon-btn.is-active {
+  background: var(--primary-soft);
+  color: var(--primary);
 }
 .avatar-btn {
   border: 0;

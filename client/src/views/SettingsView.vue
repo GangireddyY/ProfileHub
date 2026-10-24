@@ -17,6 +17,9 @@ import {
   RefreshCw,
   Mail,
   Navigation,
+  KeyRound,
+  Trash2,
+  TriangleAlert,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
@@ -32,9 +35,10 @@ import UiTagInput from '@/components/ui/UiTagInput.vue';
 import UiToggle from '@/components/ui/UiToggle.vue';
 import UiRange from '@/components/ui/UiRange.vue';
 import UiButton from '@/components/ui/UiButton.vue';
-import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiBadge from '@/components/ui/UiBadge.vue';
+import UiSheet from '@/components/ui/UiSheet.vue';
 import ProfessionPicker from '@/components/ProfessionPicker.vue';
+import AvatarUploader from '@/components/profile/AvatarUploader.vue';
 
 const auth = useAuthStore();
 const theme = useThemeStore();
@@ -47,6 +51,7 @@ const sections = [
   { id: 'location', label: 'Location & discovery', icon: MapPin },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'security', label: 'Security', icon: KeyRound },
 ];
 
 // ---------- Profile ----------
@@ -59,7 +64,6 @@ const pickProfile = (u) => ({
   skills: [...(u.skills || [])],
   experienceYears: u.experienceYears,
   city: u.city,
-  avatarUrl: u.avatarUrl,
 });
 const form = reactive(pickProfile(me.value));
 const errors = ref({});
@@ -158,6 +162,57 @@ function logout() {
   auth.logout();
   router.push({ name: 'login' });
 }
+
+// ---------- Security ----------
+const pw = reactive({ currentPassword: '', newPassword: '', confirm: '' });
+const pwErrors = ref({});
+const pwSaving = ref(false);
+
+async function changePassword() {
+  pwErrors.value = {};
+  if (pw.newPassword.length < 8) pwErrors.value.newPassword = 'Use at least 8 characters';
+  if (pw.newPassword !== pw.confirm) pwErrors.value.confirm = 'Passwords do not match';
+  if (Object.keys(pwErrors.value).length) return;
+
+  pwSaving.value = true;
+  try {
+    await auth.changePassword({ currentPassword: pw.currentPassword, newPassword: pw.newPassword });
+    Object.assign(pw, { currentPassword: '', newPassword: '', confirm: '' });
+    toast.success('Password updated. Other devices have been signed out.');
+  } catch (err) {
+    pwErrors.value = fieldErrors(err);
+    if (!Object.keys(pwErrors.value).length) toast.error(errorMessage(err));
+  } finally {
+    pwSaving.value = false;
+  }
+}
+
+// ---------- Delete account ----------
+const deleteOpen = ref(false);
+const deletePassword = ref('');
+const deleteError = ref('');
+const deleting = ref(false);
+
+function openDelete() {
+  deletePassword.value = '';
+  deleteError.value = '';
+  deleteOpen.value = true;
+}
+
+async function deleteAccount() {
+  deleting.value = true;
+  deleteError.value = '';
+  try {
+    await auth.deleteAccount(deletePassword.value);
+    deleteOpen.value = false;
+    toast.info('Your account has been deleted. Sorry to see you go.');
+    router.replace({ name: 'signup' });
+  } catch (err) {
+    deleteError.value = errorMessage(err);
+  } finally {
+    deleting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -185,18 +240,7 @@ function logout() {
         </header>
 
         <form class="stack" style="--gap: 18px" novalidate @submit.prevent="saveProfile">
-          <div class="avatar-row">
-            <UiAvatar :name="form.name" :src="form.avatarUrl" :size="72" />
-            <UiInput
-              v-model="form.avatarUrl"
-              class="grow"
-              label="Photo URL"
-              placeholder="https://…/photo.jpg"
-              inputmode="url"
-              :error="errors.avatarUrl"
-              hint="Paste a link to a square image. Leave empty to use your initials."
-            />
-          </div>
+          <AvatarUploader />
 
           <div class="form-grid form-grid--2">
             <UiInput v-model="form.name" label="Full name" maxlength="80" :error="errors.name" autocomplete="name" />
@@ -330,6 +374,48 @@ function logout() {
         </div>
       </UiCard>
 
+      <!-- Security -->
+      <UiCard id="security" class="section">
+        <header class="section__head">
+          <span class="section__icon"><KeyRound /></span>
+          <div>
+            <h2 class="section-title">Security</h2>
+            <p class="muted">Changing your password signs you out on every other device.</p>
+          </div>
+        </header>
+        <form class="stack" style="--gap: 16px" novalidate @submit.prevent="changePassword">
+          <UiInput
+            v-model="pw.currentPassword"
+            label="Current password"
+            type="password"
+            autocomplete="current-password"
+            :error="pwErrors.currentPassword"
+          />
+          <div class="form-grid form-grid--2">
+            <UiInput
+              v-model="pw.newPassword"
+              label="New password"
+              type="password"
+              autocomplete="new-password"
+              :error="pwErrors.newPassword"
+              hint="At least 8 characters"
+            />
+            <UiInput
+              v-model="pw.confirm"
+              label="Confirm new password"
+              type="password"
+              autocomplete="new-password"
+              :error="pwErrors.confirm"
+            />
+          </div>
+          <div class="row" style="justify-content: flex-end">
+            <UiButton type="submit" :loading="pwSaving" :disabled="!pw.currentPassword || !pw.newPassword">
+              Update password
+            </UiButton>
+          </div>
+        </form>
+      </UiCard>
+
       <!-- Account -->
       <UiCard class="section account">
         <div class="row grow" style="--gap: 12px">
@@ -342,7 +428,47 @@ function logout() {
         </div>
         <UiButton variant="danger" :icon="LogOut" @click="logout">Sign out</UiButton>
       </UiCard>
+
+      <!-- Danger zone -->
+      <UiCard class="section danger">
+        <div class="grow">
+          <h2 class="section-title danger__title"><TriangleAlert /> Delete account</h2>
+          <p class="muted">
+            Permanently removes your profile, connections, messages and photo. This cannot be undone.
+          </p>
+        </div>
+        <UiButton variant="danger" :icon="Trash2" @click="openDelete">Delete account</UiButton>
+      </UiCard>
     </div>
+
+    <UiSheet v-model:open="deleteOpen" title="Delete your account?" width="440px">
+      <form id="delete-form" class="stack" style="--gap: 14px" novalidate @submit.prevent="deleteAccount">
+        <p class="muted">
+          Everything tied to <strong>{{ me.email }}</strong> will be erased immediately. Enter your password to confirm.
+        </p>
+        <UiInput
+          v-model="deletePassword"
+          label="Password"
+          type="password"
+          autocomplete="current-password"
+          :error="deleteError"
+        />
+      </form>
+      <template #footer>
+        <UiButton variant="secondary" class="grow" @click="deleteOpen = false">Cancel</UiButton>
+        <UiButton
+          type="submit"
+          form="delete-form"
+          variant="danger"
+          class="grow"
+          :icon="Trash2"
+          :loading="deleting"
+          :disabled="!deletePassword"
+        >
+          Delete forever
+        </UiButton>
+      </template>
+    </UiSheet>
   </div>
 </template>
 
@@ -387,14 +513,6 @@ function logout() {
 .section__icon svg {
   width: 20px;
   height: 20px;
-}
-.avatar-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-.avatar-row > :first-child {
-  margin-top: 22px;
 }
 .form-actions {
   display: flex;
@@ -489,6 +607,27 @@ function logout() {
   background: #7c74ff;
   opacity: 0.6;
 }
+.danger {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+.danger p {
+  font-size: 0.88rem;
+  margin-top: 4px;
+}
+.danger__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--danger);
+}
+.danger__title svg {
+  width: 18px;
+  height: 18px;
+}
 .account {
   display: flex;
   align-items: center;
@@ -518,15 +657,8 @@ function logout() {
 }
 
 @media (max-width: 559px) {
-  .avatar-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .avatar-row > :first-child {
-    margin-top: 0;
-    align-self: center;
-  }
-  .account > :last-child {
+  .account > :last-child,
+  .danger > :last-child {
     width: 100%;
   }
   .desktop-badge {

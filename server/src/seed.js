@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { initDb, sequelize, User, Connection, Message } from './models/index.js';
+import { initDb, sequelize, User, Connection, Message, Experience, Notification } from './models/index.js';
 
 const PASSWORD = 'password123';
 
@@ -101,8 +101,63 @@ function jitter({ lat, lng }, km) {
   };
 }
 
+const COMPANIES = {
+  software: ['Infosys', 'Flipkart', 'Razorpay', 'Swiggy', 'Zoho'],
+  doctor: ['Apollo Hospitals', 'Manipal Hospital', 'Fortis Healthcare', 'AIIMS'],
+  healthcare: ['Narayana Health', 'Aster CMI', 'Max Healthcare'],
+  teacher: ['Delhi Public School', 'Kendriya Vidyalaya', 'Christ University'],
+  designer: ['CRED', 'Zomato', 'Ola', 'Freelance'],
+  engineer: ['L&T', 'Tata Projects', 'Bosch India'],
+  lawyer: ['Cyril Amarchand Mangaldas', 'AZB & Partners', 'Khaitan & Co'],
+  finance: ['Deloitte', 'HDFC Bank', 'KPMG India'],
+  marketing: ['Nykaa', 'Mamaearth', 'boAt'],
+  entrepreneur: ['Own startup', 'Y Combinator', 'Antler India'],
+  student: ['Campus internship', 'Research lab'],
+  creative: ['Freelance', 'Dharma Productions', 'Studio Kites'],
+};
+const SCHOOLS = ['IIT Madras', 'BITS Pilani', 'NIT Trichy', 'Christ University', 'Manipal University', 'Anna University'];
+
+const ym = (yearsAgo, month = 6) => `${new Date().getFullYear() - yearsAgo}-${String(month).padStart(2, '0')}`;
+
+function experiencesFor(user) {
+  const years = Math.max(1, user.experienceYears);
+  const companies = COMPANIES[user.profession] || ['Freelance'];
+  const rows = [
+    {
+      kind: 'work',
+      title: user.roleTitle,
+      organization: pick(companies),
+      location: user.city,
+      startDate: ym(Math.min(years, 3), 1 + Math.floor(rand() * 12)),
+      current: true,
+      description: `Working as ${user.roleTitle.toLowerCase()} with a focus on quality and collaboration.`,
+    },
+  ];
+  if (years > 3) {
+    rows.push({
+      kind: 'work',
+      title: user.roleTitle.replace(/^Senior /, ''),
+      organization: pick(companies),
+      location: user.city,
+      startDate: ym(years, 1 + Math.floor(rand() * 12)),
+      endDate: ym(Math.min(years, 3), 1),
+      current: false,
+    });
+  }
+  rows.push({
+    kind: 'education',
+    title: user.profession === 'doctor' ? 'MBBS' : user.profession === 'student' ? 'Bachelor of Technology' : 'Bachelor’s degree',
+    organization: pick(SCHOOLS),
+    startDate: ym(years + 4, 7),
+    endDate: user.profession === 'student' ? null : ym(years, 5),
+    current: user.profession === 'student',
+  });
+  return rows.map((r) => ({ ...r, userId: user.id }));
+}
+
 async function seed() {
-  await initDb({ force: true });
+  await sequelize.getQueryInterface().dropAllTables();
+  await initDb();
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const professions = Object.keys(ROLES);
 
@@ -170,8 +225,11 @@ async function seed() {
   for (const f of [inv1, inv2, inv3]) {
     if (pairs.has(key(demo.id, f.id))) continue;
     pairs.add(key(demo.id, f.id));
-    await Connection.create({ requesterId: f.id, addresseeId: demo.id, status: 'pending' });
+    const row = await Connection.create({ requesterId: f.id, addresseeId: demo.id, status: 'pending' });
+    await Notification.create({ userId: demo.id, actorId: f.id, type: 'connection_request', entityId: row.id });
   }
+
+  for (const u of users) await Experience.bulkCreate(experiencesFor(u));
 
   const now = Date.now();
   const script = [

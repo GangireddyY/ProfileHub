@@ -1,5 +1,5 @@
 import { Op } from 'sequelize';
-import { Connection, Message } from '../models/index.js';
+import { Connection, Message, Notification } from '../models/index.js';
 import { distanceBetween } from '../utils/geo.js';
 
 /** Relationship of `viewerId` towards another member, from the viewer's point of view. */
@@ -103,15 +103,17 @@ export async function decorateUsers(viewer, users) {
 }
 
 export async function buildSelf(user) {
-  const [counts, pendingRequests, unreadMessages] = await Promise.all([
+  const [counts, pendingRequests, unreadMessages, unreadNotifications] = await Promise.all([
     getConnectionCounts([user.id]),
     Connection.count({ where: { addresseeId: user.id, status: 'pending' } }),
     Message.count({ where: { receiverId: user.id, readAt: null } }),
+    Notification.count({ where: { userId: user.id, readAt: null } }),
   ]);
   return {
     ...user.toSelf(),
     connectionCount: counts.get(user.id) || 0,
     pendingRequests,
     unreadMessages,
+    unreadNotifications,
   };
 }

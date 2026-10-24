@@ -32,6 +32,8 @@ import UiSheet from '@/components/ui/UiSheet.vue';
 import UiDropdown from '@/components/ui/UiDropdown.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
+import ExperienceTimeline from '@/components/profile/ExperienceTimeline.vue';
+import ExperienceEditor from '@/components/profile/ExperienceEditor.vue';
 
 const props = defineProps({ id: { type: String, required: true } });
 
@@ -43,6 +45,15 @@ const loading = ref(true);
 const error = ref('');
 const confirmRemove = ref(false);
 const removing = ref(false);
+const editorOpen = ref(false);
+const editingEntry = ref(null);
+const editorKind = ref('work');
+
+function openEditor(entry, kind = entry?.kind || 'work') {
+  editingEntry.value = entry;
+  editorKind.value = kind;
+  editorOpen.value = true;
+}
 
 const profession = computed(() => getProfession(user.value?.profession));
 const online = computed(() =>
@@ -213,6 +224,21 @@ async function share() {
             <p v-else class="subtle bio">{{ user.name.split(' ')[0] }} hasn't written a bio yet.</p>
           </UiCard>
 
+          <ExperienceTimeline
+            kind="work"
+            :items="user.experiences"
+            :editable="user.isMe"
+            @add="openEditor(null, $event)"
+            @edit="openEditor($event)"
+          />
+          <ExperienceTimeline
+            kind="education"
+            :items="user.experiences"
+            :editable="user.isMe"
+            @add="openEditor(null, $event)"
+            @edit="openEditor($event)"
+          />
+
           <UiCard>
             <h2 class="section-title">Skills</h2>
             <div v-if="user.skills?.length" class="skills">
@@ -260,6 +286,14 @@ async function share() {
         </UiCard>
       </div>
     </template>
+
+    <ExperienceEditor
+      v-if="user?.isMe"
+      v-model:open="editorOpen"
+      :entry="editingEntry"
+      :kind="editorKind"
+      @saved="user.experiences = $event"
+    />
 
     <UiSheet v-model:open="confirmRemove" title="Remove connection?" width="420px">
       <p class="muted">

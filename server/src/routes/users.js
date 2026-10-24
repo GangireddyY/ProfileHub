@@ -7,6 +7,7 @@ import { User } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcastPresence } from '../socket/index.js';
 import { buildSelf, decorateUsers, getConnectionIds, getConnectionCounts } from '../services/social.js';
+import { listExperiences } from '../services/experiences.js';
 import { boundingBox, distanceBetween } from '../utils/geo.js';
 import { validate, notFound } from '../utils/http.js';
 
@@ -45,7 +46,6 @@ const profileSchema = z
       .transform((list) => [...new Map(list.map((s) => [s.toLowerCase(), s])).values()]),
     experienceYears: z.coerce.number().int().min(0).max(70),
     city: z.string().trim().max(100),
-    avatarUrl: z.union([z.literal(''), z.url({ protocol: /^https?$/, error: 'Use an http(s) image URL' }).max(500)]),
   })
   .partial();
 
@@ -177,16 +177,18 @@ router.get('/:id', async (req, res) => {
   const me = req.user;
 
   if (id === me.id) {
-    return res.json({ user: { ...(await buildSelf(me)), isMe: true, mutualCount: 0, mutualPreview: [] } });
+    const [self, experiences] = await Promise.all([buildSelf(me), listExperiences(me.id)]);
+    return res.json({ user: { ...self, isMe: true, mutualCount: 0, mutualPreview: [], experiences } });
   }
 
   const user = await User.findByPk(id);
   if (!user) throw notFound('This profile does not exist');
 
-  const [[decorated], myIds, theirIds] = await Promise.all([
+  const [[decorated], myIds, theirIds, experiences] = await Promise.all([
     decorateUsers(me, [user]),
     getConnectionIds(me.id),
     getConnectionIds(user.id),
+    listExperiences(user.id),
   ]);
   const mutualIds = [...myIds].filter((x) => theirIds.has(x));
   const mutualPreview = mutualIds.length
@@ -197,7 +199,7 @@ router.get('/:id', async (req, res) => {
       }))
     : [];
 
-  res.json({ user: { ...decorated, isMe: false, mutualCount: mutualIds.length, mutualPreview } });
+  res.json({ user: { ...decorated, isMe: false, mutualCount: mutualIds.length, mutualPreview, experiences } });
 });
 
 export default router;

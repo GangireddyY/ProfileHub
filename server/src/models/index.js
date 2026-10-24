@@ -1,7 +1,10 @@
 import { sequelize } from '../config/db.js';
+import { migrator } from '../db/migrator.js';
 import { User } from './User.js';
 import { Connection } from './Connection.js';
 import { Message } from './Message.js';
+import { Experience } from './Experience.js';
+import { Notification } from './Notification.js';
 
 User.hasMany(Connection, { foreignKey: 'requesterId', as: 'sentRequests', onDelete: 'CASCADE' });
 User.hasMany(Connection, { foreignKey: 'addresseeId', as: 'receivedRequests', onDelete: 'CASCADE' });
@@ -13,9 +16,17 @@ User.hasMany(Message, { foreignKey: 'receiverId', as: 'receivedMessages', onDele
 Message.belongsTo(User, { foreignKey: 'senderId', as: 'sender' });
 Message.belongsTo(User, { foreignKey: 'receiverId', as: 'receiver' });
 
-export async function initDb({ force = false } = {}) {
+User.hasMany(Experience, { foreignKey: 'userId', as: 'experiences', onDelete: 'CASCADE' });
+Experience.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+User.hasMany(Notification, { foreignKey: 'userId', as: 'notifications', onDelete: 'CASCADE' });
+Notification.belongsTo(User, { foreignKey: 'userId', as: 'recipient' });
+Notification.belongsTo(User, { foreignKey: 'actorId', as: 'actor' });
+
+/** Connect and apply any pending migrations. */
+export async function initDb() {
   await sequelize.authenticate();
-  await sequelize.sync({ force });
+  await migrator.up();
 }
 
-export { sequelize, User, Connection, Message };
+export { sequelize, User, Connection, Message, Experience, Notification };

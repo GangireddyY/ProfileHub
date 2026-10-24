@@ -1,5 +1,5 @@
 import { User } from '../models/index.js';
-import { verifyToken } from '../utils/token.js';
+import { verifyToken, isTokenStale } from '../utils/token.js';
 
 export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
@@ -7,9 +7,10 @@ export async function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ message: 'Authentication required' });
 
   try {
-    const { sub } = verifyToken(token);
-    const user = await User.findByPk(sub);
+    const payload = verifyToken(token);
+    const user = await User.findByPk(payload.sub, { attributes: { include: ['passwordChangedAt'] } });
     if (!user) return res.status(401).json({ message: 'Account no longer exists' });
+    if (isTokenStale(user, payload)) return res.status(401).json({ message: 'Password changed, please sign in again' });
     req.user = user;
     next();
   } catch {

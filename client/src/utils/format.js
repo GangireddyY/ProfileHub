@@ -65,6 +65,27 @@ export function lastSeenLabel(online, lastSeenAt) {
   return `Active ${timeAgo(lastSeenAt)}`;
 }
 
+/** '2024-03' -> 'Mar 2024' */
+export function formatMonth(ym) {
+  if (!ym) return '';
+  const [y, m] = ym.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
+
+/** Inclusive month span, e.g. '2 yrs 3 mos'. */
+export function formatDuration(start, end) {
+  if (!start) return '';
+  const [sy, sm] = start.split('-').map(Number);
+  const now = new Date();
+  const [ey, em] = end ? end.split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
+  const total = Math.max(1, (ey - sy) * 12 + (em - sm) + 1);
+  const years = Math.floor(total / 12);
+  const months = total % 12;
+  return [years && `${years} yr${years > 1 ? 's' : ''}`, months && `${months} mo${months > 1 ? 's' : ''}`]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function initials(name = '') {
   return name
     .split(/\s+/)

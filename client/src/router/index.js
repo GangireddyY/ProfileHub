@@ -25,6 +25,12 @@ const routes = [
         meta: { title: 'Messages', fullHeight: true },
       },
       {
+        path: 'notifications',
+        name: 'notifications',
+        component: () => import('@/views/NotificationsView.vue'),
+        meta: { title: 'Notifications' },
+      },
+      {
         path: 'settings',
         name: 'settings',
         component: () => import('@/views/SettingsView.vue'),

@@ -1,3 +1,4 @@
+import multer from 'multer';
 import { UniqueConstraintError, ValidationError } from 'sequelize';
 import { HttpError } from '../utils/http.js';
 
@@ -16,8 +17,17 @@ export function errorHandler(err, req, res, next) {
   if (err instanceof ValidationError) {
     return res.status(400).json({ message: err.errors?.[0]?.message || 'Invalid data' });
   }
+  if (err instanceof multer.MulterError) {
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5 MB or smaller' : 'Upload failed, please try again';
+    return res.status(400).json({ message });
+  }
   if (err?.type === 'entity.parse.failed') {
     return res.status(400).json({ message: 'Malformed JSON body' });
+  }
+  // Client errors raised by middleware (e.g. express.static's 404 for a missing upload).
+  if (Number.isInteger(err?.status) && err.status >= 400 && err.status < 500) {
+    const message = err.status === 404 ? 'Not found' : err.expose ? err.message : 'Bad request';
+    return res.status(err.status).json({ message });
   }
   console.error(err);
   res.status(500).json({ message: 'Something went wrong on our side' });
