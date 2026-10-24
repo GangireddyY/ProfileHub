@@ -1,0 +1,10 @@
+{
+  "name": "ProfileHUB",
+  "short_name": "ProfileHUB",
+  "description": "Discover professionals near you, grow your network and chat in real time.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f6fb",
+  "theme_color": "#4f46e5",
+  "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

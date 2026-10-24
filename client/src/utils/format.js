@@ -1,0 +1,81 @@
+const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+
+export function timeAgo(date) {
+  if (!date) return '';
+  const diff = (new Date(date).getTime() - Date.now()) / 1000;
+  const abs = Math.abs(diff);
+  if (abs < 45) return 'just now';
+  const units = [
+    ['minute', 60],
+    ['hour', 3600],
+    ['day', 86400],
+    ['week', 604800],
+    ['month', 2629800],
+    ['year', 31557600],
+  ];
+  let unit = units[0];
+  for (const u of units) if (abs >= u[1]) unit = u;
+  return rtf.format(Math.round(diff / unit[1]), unit[0]);
+}
+
+export function formatTime(date) {
+  return new Date(date).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+
+export function formatDay(date) {
+  const d = new Date(date);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return 'Today';
+  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric',
+  });
+}
+
+/** Compact chat-list stamp: time today, weekday this week, date otherwise. */
+export function formatStamp(date) {
+  const d = new Date(date);
+  const now = new Date();
+  if (d.toDateString() === now.toDateString()) return formatTime(d);
+  const days = (now - d) / 86400000;
+  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export function formatDistance(km) {
+  if (km == null) return '';
+  if (km < 1) return `${Math.max(100, Math.round((km * 1000) / 100) * 100)} m away`;
+  if (km < 10) return `${km.toFixed(1)} km away`;
+  return `${Math.round(km)} km away`;
+}
+
+export function formatCount(n) {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return String(n ?? 0);
+}
+
+export function lastSeenLabel(online, lastSeenAt) {
+  if (online) return 'Online';
+  if (!lastSeenAt) return 'Offline';
+  return `Active ${timeAgo(lastSeenAt)}`;
+}
+
+export function initials(name = '') {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0].toUpperCase())
+    .join('');
+}
+
+export function hashHue(str = '') {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) % 360;
+  return h;
+}

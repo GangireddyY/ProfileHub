@@ -1,0 +1,15 @@
+export const PROFESSIONS = [
+  'software',
+  'doctor',
+  'healthcare',
+  'teacher',
+  'designer',
+  'engineer',
+  'lawyer',
+  'finance',
+  'marketing',
+  'entrepreneur',
+  'student',
+  'creative',
+  'other',
+];
