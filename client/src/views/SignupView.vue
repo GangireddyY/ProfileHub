@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
-import { Mail, Lock, User, Briefcase, ArrowRight, ArrowLeft } from 'lucide-vue-next';
+import { Mail, Lock, User, Briefcase, ArrowRight, ArrowLeft, Check } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { errorMessage, fieldErrors } from '@/api/http';
 import { toast } from '@/composables/useToast';
@@ -13,6 +13,7 @@ import ProfessionPicker from '@/components/ProfessionPicker.vue';
 const auth = useAuthStore();
 const router = useRouter();
 
+const steps = ['Your account', 'Your profession'];
 const step = ref(1);
 const form = reactive({ name: '', email: '', password: '', profession: '', roleTitle: '' });
 const errors = ref({});
@@ -76,14 +77,24 @@ async function submit() {
 </script>
 
 <template>
-  <div class="stack" style="--gap: 18px">
-    <header class="stack" style="--gap: 6px">
-      <div class="steps" aria-hidden="true">
-        <span :class="{ 'is-on': step >= 1 }" />
-        <span :class="{ 'is-on': step >= 2 }" />
-      </div>
-      <p class="subtle step-label">Step {{ step }} of 2</p>
-      <h1 class="page-title">{{ step === 1 ? 'Create your account' : 'What do you do?' }}</h1>
+  <div class="stack" style="--gap: 20px">
+    <ol class="stepper" :aria-label="`Step ${step} of ${steps.length}`">
+      <li
+        v-for="(label, i) in steps"
+        :key="label"
+        :class="{ 'is-current': step === i + 1, 'is-done': step > i + 1 }"
+        :aria-current="step === i + 1 ? 'step' : undefined"
+      >
+        <span class="stepper__dot">
+          <Check v-if="step > i + 1" />
+          <template v-else>{{ i + 1 }}</template>
+        </span>
+        <span class="stepper__label">{{ label }}</span>
+      </li>
+    </ol>
+
+    <header class="auth-head">
+      <h1 class="auth-title">{{ step === 1 ? 'Create your account' : 'What do you do?' }}</h1>
       <p class="muted">
         {{ step === 1 ? 'Join professionals building their network nearby.' : 'This sets your profession badge so others can find you.' }}
       </p>
@@ -141,41 +152,81 @@ async function submit() {
       </form>
     </Transition>
 
-    <p class="muted switch">
+    <p class="switch">
       Already have an account? <RouterLink to="/login" class="link">Sign in</RouterLink>
     </p>
   </div>
 </template>
 
 <style scoped>
-.steps {
+.stepper {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
-  gap: 6px;
-  margin-bottom: 4px;
+  align-items: center;
+  gap: 10px;
 }
-.steps span {
-  height: 5px;
+.stepper li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.stepper li + li {
   flex: 1;
-  border-radius: 99px;
-  background: var(--surface-3);
+  gap: 10px;
+}
+.stepper li + li::before {
+  content: '';
+  flex: 1;
+  min-width: 20px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border);
   transition: background-color 0.3s var(--ease);
 }
-.steps span.is-on {
+.stepper li.is-done + li::before {
   background: linear-gradient(90deg, var(--primary), var(--accent));
 }
-.step-label {
-  font-size: 0.78rem;
+.stepper__dot {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 0.8rem;
   font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  color: var(--text-3);
+  background: var(--surface-3);
+  transition: all 0.3s var(--ease);
 }
-.form-alert {
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-size: 0.9rem;
-  font-weight: 500;
+.stepper__dot svg {
+  width: 15px;
+  height: 15px;
+  stroke-width: 3;
+}
+.stepper li.is-current .stepper__dot,
+.stepper li.is-done .stepper__dot {
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 6px 14px -6px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+.stepper li.is-current .stepper__dot {
+  box-shadow: 0 0 0 4px var(--primary-soft), 0 6px 14px -6px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+.stepper__label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.stepper li.is-current .stepper__label,
+.stepper li.is-done .stepper__label {
+  color: var(--text);
 }
 .strength {
   display: flex;
@@ -206,13 +257,5 @@ async function submit() {
 .strength[data-score='3'] .on,
 .strength[data-score='4'] .on {
   background: var(--success);
-}
-.switch {
-  text-align: center;
-  font-size: 0.92rem;
-}
-.link {
-  color: var(--primary);
-  font-weight: 700;
 }
 </style>

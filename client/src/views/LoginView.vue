@@ -44,9 +44,9 @@ function useDemo() {
 </script>
 
 <template>
-  <form class="stack" style="--gap: 18px" novalidate @submit.prevent="submit">
-    <header class="stack" style="--gap: 6px">
-      <h1 class="page-title">Welcome back</h1>
+  <form class="stack" style="--gap: 20px" novalidate @submit.prevent="submit">
+    <header class="auth-head">
+      <h1 class="auth-title">Welcome back</h1>
       <p class="muted">Sign in to see who's around and catch up with your network.</p>
     </header>
 
@@ -54,35 +54,42 @@ function useDemo() {
       <p v-if="formError" class="form-alert" role="alert">{{ formError }}</p>
     </Transition>
 
-    <UiInput
-      v-model="form.email"
-      label="Email"
-      type="email"
-      :icon="Mail"
-      placeholder="you@example.com"
-      autocomplete="email"
-      inputmode="email"
-      :error="errors.email"
-    />
-    <UiInput
-      v-model="form.password"
-      label="Password"
-      type="password"
-      :icon="Lock"
-      placeholder="Your password"
-      autocomplete="current-password"
-      :error="errors.password"
-    />
+    <div class="stack" style="--gap: 16px">
+      <UiInput
+        v-model="form.email"
+        label="Email"
+        type="email"
+        :icon="Mail"
+        placeholder="you@example.com"
+        autocomplete="email"
+        inputmode="email"
+        :error="errors.email"
+      />
+      <UiInput
+        v-model="form.password"
+        label="Password"
+        type="password"
+        :icon="Lock"
+        placeholder="Your password"
+        autocomplete="current-password"
+        :error="errors.password"
+      />
+    </div>
 
     <UiButton type="submit" size="lg" block :loading="loading" :icon-right="ArrowRight">Sign in</UiButton>
 
     <div class="divider"><span>or</span></div>
 
-    <UiButton variant="secondary" block :icon="Sparkles" :disabled="loading" @click="useDemo">
-      Try the demo account
-    </UiButton>
+    <div class="demo">
+      <span class="demo__icon"><Sparkles /></span>
+      <div class="grow">
+        <strong>Just exploring?</strong>
+        <p>Jump in with a ready-made demo profile.</p>
+      </div>
+      <UiButton variant="soft" size="sm" :disabled="loading" @click="useDemo">Try demo</UiButton>
+    </div>
 
-    <p class="muted switch">
+    <p class="switch">
       New to ProfileHUB?
       <RouterLink :to="{ name: 'signup', query: route.query }" class="link">Create an account</RouterLink>
     </p>
@@ -90,20 +97,15 @@ function useDemo() {
 </template>
 
 <style scoped>
-.form-alert {
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
 .divider {
   display: flex;
   align-items: center;
   gap: 12px;
   color: var(--text-3);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 .divider::before,
 .divider::after {
@@ -112,15 +114,35 @@ function useDemo() {
   height: 1px;
   background: var(--border);
 }
-.switch {
-  text-align: center;
+.demo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px dashed color-mix(in srgb, var(--primary) 40%, var(--border));
+  background: color-mix(in srgb, var(--primary) 5%, transparent);
+}
+.demo strong {
   font-size: 0.92rem;
 }
-.link {
-  color: var(--primary);
-  font-weight: 700;
+.demo p {
+  font-size: 0.82rem;
+  color: var(--text-2);
 }
-.link:hover {
-  text-decoration: underline;
+.demo__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--primary) 80%, transparent);
+}
+.demo__icon svg {
+  width: 20px;
+  height: 20px;
 }
 </style>
