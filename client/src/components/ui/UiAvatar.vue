@@ -19,7 +19,7 @@ const style = computed(() => ({
   '--size': `${props.size}px`,
   '--hue': hue.value,
 }));
-const dotSize = computed(() => Math.max(10, Math.round(props.size * 0.26)));
+const dotSize = computed(() => Math.min(22, Math.max(10, Math.round(props.size * 0.24))));
 </script>
 
 <template>
@@ -63,8 +63,8 @@ const dotSize = computed(() => Math.max(10, Math.round(props.size * 0.26)));
 }
 .avatar__dot {
   position: absolute;
-  right: 2%;
-  bottom: 2%;
+  right: 4%;
+  bottom: 4%;
   border-radius: 50%;
   border: 2px solid var(--surface);
 }

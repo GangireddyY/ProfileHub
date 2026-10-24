@@ -425,8 +425,8 @@ onBeforeUnmount(() => {
 
 .chips {
   padding-bottom: 2px;
-  margin-inline: calc(-1 * clamp(12px, 3vw, 24px));
-  padding-inline: clamp(12px, 3vw, 24px);
+  margin-inline: calc(-1 * var(--page-pad));
+  padding-inline: var(--page-pad);
 }
 
 .locate-banner {
@@ -462,7 +462,7 @@ onBeforeUnmount(() => {
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
 }
 .skeleton-card {
@@ -578,7 +578,11 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1024px) {
   .discover {
-    grid-template-columns: 300px minmax(0, 1fr);
+    grid-template-columns: var(--aside-w) minmax(0, 1fr);
+  }
+  .chips {
+    margin-inline: 0;
+    padding-inline: 0;
   }
   .discover__side {
     display: flex;

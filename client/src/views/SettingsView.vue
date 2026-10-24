@@ -36,6 +36,7 @@ import UiToggle from '@/components/ui/UiToggle.vue';
 import UiRange from '@/components/ui/UiRange.vue';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiBadge from '@/components/ui/UiBadge.vue';
+import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import ProfessionPicker from '@/components/ProfessionPicker.vue';
 import AvatarUploader from '@/components/profile/AvatarUploader.vue';
@@ -49,9 +50,9 @@ const me = computed(() => auth.user);
 const sections = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'location', label: 'Location & discovery', icon: MapPin },
+  { id: 'security', label: 'Security', icon: KeyRound },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
   { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'security', label: 'Security', icon: KeyRound },
 ];
 
 // ---------- Profile ----------
@@ -216,229 +217,244 @@ async function deleteAccount() {
 </script>
 
 <template>
-  <div class="container settings">
-    <aside class="settings__nav">
-      <h1 class="page-title">Settings</h1>
-      <nav>
-        <button v-for="s in sections" :key="s.id" type="button" class="nav-link" @click="scrollTo(s.id)">
-          <component :is="s.icon" /> {{ s.label }}
-        </button>
-      </nav>
+  <div class="container page-layout">
+    <aside class="page-aside page-aside--sticky settings__nav">
+      <UiCard :padded="false">
+        <header class="nav-head">
+          <UiAvatar :name="me.name" :src="me.avatarUrl" :size="44" />
+          <div class="grow" style="min-width: 0">
+            <strong class="truncate" style="display: block">{{ me.name }}</strong>
+            <span class="muted truncate" style="display: block; font-size: 0.82rem">{{ me.email }}</span>
+          </div>
+        </header>
+        <nav class="nav-list" aria-label="Settings sections">
+          <button v-for="s in sections" :key="s.id" type="button" class="nav-link" @click="scrollTo(s.id)">
+            <component :is="s.icon" /> {{ s.label }}
+          </button>
+        </nav>
+      </UiCard>
     </aside>
 
-    <div class="settings__content">
-      <h1 class="page-title mobile-title">Settings</h1>
+    <div class="page-main">
+      <header class="page-head">
+        <div>
+          <h1 class="page-title">Settings</h1>
+          <p class="muted">Manage your profile, privacy and account.</p>
+        </div>
+      </header>
 
-      <!-- Profile -->
-      <UiCard id="profile" class="section">
-        <header class="section__head">
-          <span class="section__icon"><UserRound /></span>
-          <div>
-            <h2 class="section-title">Profile</h2>
-            <p class="muted">This is what other members see on your profile.</p>
-          </div>
-        </header>
-
-        <form class="stack" style="--gap: 18px" novalidate @submit.prevent="saveProfile">
-          <AvatarUploader />
-
-          <div class="form-grid form-grid--2">
-            <UiInput v-model="form.name" label="Full name" maxlength="80" :error="errors.name" autocomplete="name" />
-            <UiInput v-model="form.roleTitle" label="Role / title" maxlength="100" placeholder="e.g. Pediatrician" :error="errors.roleTitle" />
-            <UiInput
-              v-model="form.headline"
-              class="span-2"
-              label="Headline"
-              maxlength="160"
-              placeholder="A one-liner about what you do"
-              :error="errors.headline"
-            />
-            <UiInput v-model="form.city" label="City" maxlength="100" placeholder="e.g. Bengaluru" :error="errors.city" />
-            <UiInput
-              v-model.number="form.experienceYears"
-              label="Years of experience"
-              type="number"
-              min="0"
-              max="70"
-              inputmode="numeric"
-              :error="errors.experienceYears"
-            />
-          </div>
-
-          <ProfessionPicker v-model="form.profession" label="Profession" :error="errors.profession" />
-          <UiTextarea v-model="form.bio" label="About" :maxlength="2000" :rows="5" placeholder="Tell people about your work, interests and what you're looking for." :error="errors.bio" />
-          <UiTagInput v-model="form.skills" label="Skills" placeholder="Add a skill and press Enter" :error="errors.skills" />
-
-          <div class="form-actions" :class="{ 'is-dirty': dirty }">
-            <span v-if="dirty" class="muted">You have unsaved changes</span>
-            <div class="row" style="margin-left: auto">
-              <UiButton variant="ghost" :disabled="!dirty || saving" @click="resetProfile">Discard</UiButton>
-              <UiButton type="submit" :icon="Save" :loading="saving" :disabled="!dirty">Save changes</UiButton>
+      <div class="settings__grid">
+        <!-- Profile -->
+        <UiCard id="profile" class="section section--full">
+          <header class="section__head">
+            <span class="section__icon"><UserRound /></span>
+            <div>
+              <h2 class="section-title">Profile</h2>
+              <p class="muted">This is what other members see on your profile.</p>
             </div>
-          </div>
-        </form>
-      </UiCard>
+          </header>
 
-      <!-- Location -->
-      <UiCard id="location" class="section">
-        <header class="section__head">
-          <span class="section__icon"><MapPin /></span>
-          <div>
-            <h2 class="section-title">Location & discovery</h2>
-            <p class="muted">Control how distance-based discovery works for you.</p>
-          </div>
-        </header>
+          <form class="stack" style="--gap: 18px" novalidate @submit.prevent="saveProfile">
+            <AvatarUploader />
 
-        <div class="stack" style="--gap: 18px">
-          <UiToggle
-            v-model="shareLocation"
-            :icon="LocateFixed"
-            label="Share my location"
-            description="Lets you filter by range and shows others how far you are. Your exact coordinates are never shown."
-            :loading="pending.location || geo.loading.value"
-          />
-
-          <div v-if="me.hasLocation" class="location-status">
-            <Navigation />
-            <div class="grow">
-              <strong>{{ me.city || 'Location set' }}</strong>
-              <span class="muted">Updated {{ timeAgo(me.locationUpdatedAt) }}</span>
+            <div class="form-grid form-grid--2">
+              <UiInput v-model="form.name" label="Full name" maxlength="80" :error="errors.name" autocomplete="name" />
+              <UiInput v-model="form.roleTitle" label="Role / title" maxlength="100" placeholder="e.g. Pediatrician" :error="errors.roleTitle" />
+              <UiInput
+                v-model="form.headline"
+                class="span-2"
+                label="Headline"
+                maxlength="160"
+                placeholder="A one-liner about what you do"
+                :error="errors.headline"
+              />
+              <UiInput v-model="form.city" label="City" maxlength="100" placeholder="e.g. Bengaluru" :error="errors.city" />
+              <UiInput
+                v-model.number="form.experienceYears"
+                label="Years of experience"
+                type="number"
+                min="0"
+                max="70"
+                inputmode="numeric"
+                :error="errors.experienceYears"
+              />
             </div>
-            <UiButton variant="secondary" size="sm" :icon="RefreshCw" :loading="geo.loading.value" @click="refreshLocation">
-              Update
-            </UiButton>
+
+            <ProfessionPicker v-model="form.profession" label="Profession" :error="errors.profession" />
+            <UiTextarea v-model="form.bio" label="About" :maxlength="2000" :rows="5" placeholder="Tell people about your work, interests and what you're looking for." :error="errors.bio" />
+            <UiTagInput v-model="form.skills" label="Skills" placeholder="Add a skill and press Enter" :error="errors.skills" />
+
+            <div class="form-actions" :class="{ 'is-dirty': dirty }">
+              <span v-if="dirty" class="muted">You have unsaved changes</span>
+              <div class="row" style="margin-left: auto">
+                <UiButton variant="ghost" :disabled="!dirty || saving" @click="resetProfile">Discard</UiButton>
+                <UiButton type="submit" :icon="Save" :loading="saving" :disabled="!dirty">Save changes</UiButton>
+              </div>
+            </div>
+          </form>
+        </UiCard>
+
+        <!-- Location -->
+        <UiCard id="location" class="section">
+          <header class="section__head">
+            <span class="section__icon"><MapPin /></span>
+            <div>
+              <h2 class="section-title">Location & discovery</h2>
+              <p class="muted">Control how distance-based discovery works for you.</p>
+            </div>
+          </header>
+
+          <div class="stack" style="--gap: 18px">
+            <UiToggle
+              v-model="shareLocation"
+              :icon="LocateFixed"
+              label="Share my location"
+              description="Lets you filter by range and shows others how far you are. Your exact coordinates are never shown."
+              :loading="pending.location || geo.loading.value"
+            />
+
+            <div v-if="me.hasLocation" class="location-status">
+              <Navigation />
+              <div class="grow">
+                <strong>{{ me.city || 'Location set' }}</strong>
+                <span class="muted">Updated {{ timeAgo(me.locationUpdatedAt) }}</span>
+              </div>
+              <UiButton variant="secondary" size="sm" :icon="RefreshCw" :loading="geo.loading.value" @click="refreshLocation">
+                Update
+              </UiButton>
+            </div>
+            <p v-if="geo.error.value" class="error-text">{{ geo.error.value }}</p>
+
+            <UiRange
+              v-model="radiusIdx"
+              :min="0"
+              :max="RADIUS_STEPS.length - 1"
+              label="Default discovery radius"
+              :format="(i) => `${RADIUS_STEPS[i]} km`"
+              :disabled="!me.hasLocation"
+              :marks="['1 km', '500 km']"
+            />
+
+            <UiToggle
+              v-model="discoverable"
+              :icon="Eye"
+              label="Show me in Discover"
+              description="When off, people can still open your profile via a direct link or your network."
+              :loading="pending.discoverable"
+            />
           </div>
-          <p v-if="geo.error.value" class="error-text">{{ geo.error.value }}</p>
+        </UiCard>
 
-          <UiRange
-            v-model="radiusIdx"
-            :min="0"
-            :max="RADIUS_STEPS.length - 1"
-            label="Default discovery radius"
-            :format="(i) => `${RADIUS_STEPS[i]} km`"
-            :disabled="!me.hasLocation"
-            :marks="['1 km', '500 km']"
-          />
+        <!-- Security -->
+        <UiCard id="security" class="section">
+          <header class="section__head">
+            <span class="section__icon"><KeyRound /></span>
+            <div>
+              <h2 class="section-title">Security</h2>
+              <p class="muted">Changing your password signs you out on every other device.</p>
+            </div>
+          </header>
+          <form class="stack" style="--gap: 16px" novalidate @submit.prevent="changePassword">
+            <UiInput
+              v-model="pw.currentPassword"
+              label="Current password"
+              type="password"
+              autocomplete="current-password"
+              :error="pwErrors.currentPassword"
+            />
+            <div class="form-grid form-grid--2">
+              <UiInput
+                v-model="pw.newPassword"
+                label="New password"
+                type="password"
+                autocomplete="new-password"
+                :error="pwErrors.newPassword"
+                hint="At least 8 characters"
+              />
+              <UiInput
+                v-model="pw.confirm"
+                label="Confirm new password"
+                type="password"
+                autocomplete="new-password"
+                :error="pwErrors.confirm"
+              />
+            </div>
+            <div class="row" style="justify-content: flex-end">
+              <UiButton type="submit" :loading="pwSaving" :disabled="!pw.currentPassword || !pw.newPassword">
+                Update password
+              </UiButton>
+            </div>
+          </form>
+        </UiCard>
 
+        <!-- Privacy -->
+        <UiCard id="privacy" class="section">
+          <header class="section__head">
+            <span class="section__icon"><ShieldCheck /></span>
+            <div>
+              <h2 class="section-title">Privacy</h2>
+              <p class="muted">Choose what others can see about your activity.</p>
+            </div>
+          </header>
           <UiToggle
-            v-model="discoverable"
-            :icon="Eye"
-            label="Show me in Discover"
-            description="When off, people can still open your profile via a direct link or your network."
-            :loading="pending.discoverable"
+            v-model="showOnline"
+            :icon="Wifi"
+            label="Show online status"
+            description="When off, you appear offline and your last-seen time is hidden."
+            :loading="pending.showOnlineStatus"
           />
-        </div>
-      </UiCard>
+        </UiCard>
 
-      <!-- Privacy -->
-      <UiCard id="privacy" class="section">
-        <header class="section__head">
-          <span class="section__icon"><ShieldCheck /></span>
-          <div>
-            <h2 class="section-title">Privacy</h2>
-            <p class="muted">Choose what others can see about your activity.</p>
+        <!-- Appearance -->
+        <UiCard id="appearance" class="section">
+          <header class="section__head">
+            <span class="section__icon"><Palette /></span>
+            <div>
+              <h2 class="section-title">Appearance</h2>
+              <p class="muted">Pick a theme or follow your device.</p>
+            </div>
+          </header>
+          <div class="theme-grid" role="radiogroup" aria-label="Theme">
+            <button
+              v-for="o in themeOptions"
+              :key="o.value"
+              type="button"
+              role="radio"
+              class="theme-opt"
+              :class="{ 'is-active': theme.mode === o.value }"
+              :aria-checked="theme.mode === o.value"
+              @click="theme.mode = o.value"
+            >
+              <span class="theme-opt__preview" :data-preview="o.value"><span /><span /></span>
+              <span class="row" style="--gap: 6px"><component :is="o.icon" /> {{ o.label }}</span>
+            </button>
           </div>
-        </header>
-        <UiToggle
-          v-model="showOnline"
-          :icon="Wifi"
-          label="Show online status"
-          description="When off, you appear offline and your last-seen time is hidden."
-          :loading="pending.showOnlineStatus"
-        />
-      </UiCard>
+        </UiCard>
 
-      <!-- Appearance -->
-      <UiCard id="appearance" class="section">
-        <header class="section__head">
-          <span class="section__icon"><Palette /></span>
-          <div>
-            <h2 class="section-title">Appearance</h2>
-            <p class="muted">Pick a theme or follow your device.</p>
+        <!-- Account -->
+        <UiCard class="section account">
+          <div class="row grow" style="--gap: 12px">
+            <span class="section__icon"><Mail /></span>
+            <div class="grow" style="min-width: 0">
+              <strong>Signed in as</strong>
+              <p class="muted truncate">{{ me.email }}</p>
+            </div>
+            <UiBadge tone="success" dot class="desktop-badge">Active</UiBadge>
           </div>
-        </header>
-        <div class="theme-grid" role="radiogroup" aria-label="Theme">
-          <button
-            v-for="o in themeOptions"
-            :key="o.value"
-            type="button"
-            role="radio"
-            class="theme-opt"
-            :class="{ 'is-active': theme.mode === o.value }"
-            :aria-checked="theme.mode === o.value"
-            @click="theme.mode = o.value"
-          >
-            <span class="theme-opt__preview" :data-preview="o.value"><span /><span /></span>
-            <span class="row" style="--gap: 6px"><component :is="o.icon" /> {{ o.label }}</span>
-          </button>
-        </div>
-      </UiCard>
+          <UiButton variant="danger" :icon="LogOut" @click="logout">Sign out</UiButton>
+        </UiCard>
 
-      <!-- Security -->
-      <UiCard id="security" class="section">
-        <header class="section__head">
-          <span class="section__icon"><KeyRound /></span>
-          <div>
-            <h2 class="section-title">Security</h2>
-            <p class="muted">Changing your password signs you out on every other device.</p>
+        <!-- Danger zone -->
+        <UiCard class="section danger">
+          <div class="grow">
+            <h2 class="section-title danger__title"><TriangleAlert /> Delete account</h2>
+            <p class="muted">
+              Permanently removes your profile, connections, messages and photo. This cannot be undone.
+            </p>
           </div>
-        </header>
-        <form class="stack" style="--gap: 16px" novalidate @submit.prevent="changePassword">
-          <UiInput
-            v-model="pw.currentPassword"
-            label="Current password"
-            type="password"
-            autocomplete="current-password"
-            :error="pwErrors.currentPassword"
-          />
-          <div class="form-grid form-grid--2">
-            <UiInput
-              v-model="pw.newPassword"
-              label="New password"
-              type="password"
-              autocomplete="new-password"
-              :error="pwErrors.newPassword"
-              hint="At least 8 characters"
-            />
-            <UiInput
-              v-model="pw.confirm"
-              label="Confirm new password"
-              type="password"
-              autocomplete="new-password"
-              :error="pwErrors.confirm"
-            />
-          </div>
-          <div class="row" style="justify-content: flex-end">
-            <UiButton type="submit" :loading="pwSaving" :disabled="!pw.currentPassword || !pw.newPassword">
-              Update password
-            </UiButton>
-          </div>
-        </form>
-      </UiCard>
-
-      <!-- Account -->
-      <UiCard class="section account">
-        <div class="row grow" style="--gap: 12px">
-          <span class="section__icon"><Mail /></span>
-          <div class="grow" style="min-width: 0">
-            <strong>Signed in as</strong>
-            <p class="muted truncate">{{ me.email }}</p>
-          </div>
-          <UiBadge tone="success" dot class="desktop-badge">Active</UiBadge>
-        </div>
-        <UiButton variant="danger" :icon="LogOut" @click="logout">Sign out</UiButton>
-      </UiCard>
-
-      <!-- Danger zone -->
-      <UiCard class="section danger">
-        <div class="grow">
-          <h2 class="section-title danger__title"><TriangleAlert /> Delete account</h2>
-          <p class="muted">
-            Permanently removes your profile, connections, messages and photo. This cannot be undone.
-          </p>
-        </div>
-        <UiButton variant="danger" :icon="Trash2" @click="openDelete">Delete account</UiButton>
-      </UiCard>
+          <UiButton variant="danger" :icon="Trash2" @click="openDelete">Delete account</UiButton>
+        </UiCard>
+      </div>
     </div>
 
     <UiSheet v-model:open="deleteOpen" title="Delete your account?" width="440px">
@@ -473,23 +489,32 @@ async function deleteAccount() {
 </template>
 
 <style scoped>
-.settings {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
-  max-width: 1040px;
-}
 .settings__nav {
   display: none;
 }
-.settings__content {
-  display: flex;
-  flex-direction: column;
+.settings__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  min-width: 0;
+  align-items: stretch;
 }
 .section {
   scroll-margin-top: calc(var(--nav-h) + 16px);
+}
+.section--full {
+  grid-column: 1 / -1;
+}
+.nav-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
 }
 .section__head {
   display: flex;
@@ -641,14 +666,16 @@ async function deleteAccount() {
   width: 100%;
   padding: 11px 12px;
   border: 0;
-  border-radius: 12px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-2);
   font-weight: 600;
+  font-size: 0.9rem;
   text-align: left;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
 }
 .nav-link:hover {
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
 }
 .nav-link svg {
@@ -672,20 +699,16 @@ async function deleteAccount() {
   }
 }
 
-@media (min-width: 960px) {
-  .settings {
-    grid-template-columns: 220px minmax(0, 1fr);
-    align-items: start;
-  }
+@media (min-width: 1024px) {
   .settings__nav {
     display: flex;
-    flex-direction: column;
-    gap: 16px;
-    position: sticky;
-    top: calc(var(--nav-h) + 24px);
   }
-  .mobile-title {
-    display: none;
+}
+
+/* Pair the smaller cards side by side on wide screens; the profile form keeps the full width. */
+@media (min-width: 1280px) {
+  .settings__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

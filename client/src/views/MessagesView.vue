@@ -160,12 +160,12 @@ function startChat(u) {
 
 @media (min-width: 900px) {
   .messages-page {
-    padding: 24px clamp(12px, 3vw, 24px);
+    padding: 24px var(--page-pad);
     max-width: var(--content-max);
     margin: 0 auto;
   }
   .messages {
-    grid-template-columns: 340px minmax(0, 1fr);
+    grid-template-columns: 360px minmax(0, 1fr);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);

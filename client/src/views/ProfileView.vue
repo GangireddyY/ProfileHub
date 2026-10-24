@@ -312,7 +312,6 @@ async function share() {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 1040px;
 }
 .overflow-hidden,
 .header {
@@ -514,7 +513,7 @@ a.stat:hover strong {
 
 @media (min-width: 900px) {
   .columns {
-    grid-template-columns: minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 340px;
     align-items: start;
   }
   .details {
