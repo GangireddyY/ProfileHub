@@ -1,36 +1,46 @@
 import {
-  CodeXml,
-  Stethoscope,
-  HeartPulse,
-  GraduationCap,
-  Palette,
-  HardHat,
-  Scale,
-  Landmark,
-  Megaphone,
-  Rocket,
-  BookOpen,
-  Clapperboard,
-  Briefcase,
+  Accessibility, Ambulance, Anchor, Armchair, Baby, Bed, Bike, BookOpen, Boxes, Brain, BrickWall, Briefcase, Brush,
+  Bubbles, Building, Building2, Bus, Cable, Calculator, Camera, Car, CarTaxiFront, ChartLine, ChefHat, Clapperboard,
+  Cloud, CodeXml, Coffee, Cog, Construction, Container, Cpu, Croissant, Database, Droplets, Dumbbell, Eye, Factory,
+  Fan, Fish, Flag, Flame, Flower2, Footprints, Forklift, Fuel, Gem, GraduationCap, Guitar, Hammer, Hand, HandHeart,
+  Handshake, HardHat, Headset, HeartPulse, Hotel, House, KeyRound, Landmark, Languages, Laptop, Leaf, Lightbulb,
+  Megaphone, Microscope, Mountain, Music, Package, PaintRoller, Paintbrush, Palette, PawPrint, PenTool, Pickaxe, Pill,
+  Plane, Plug, Printer, Receipt, Rocket, Ruler, Scale, School, Scissors, Scroll, Server, Shapes, Shield, ShieldCheck,
+  Shirt, ShoppingCart, Shovel, Signpost, Siren, Smartphone, Soup, Sparkles, Sprout, Stethoscope, Store, Syringe, Tag,
+  Tractor, Truck, Users, UtensilsCrossed, Video, Warehouse, WashingMachine, Wheat, Wine, Wrench, Zap,
 } from 'lucide-vue-next';
+import { useProfessionsStore } from '@/stores/professions';
 
-/** `hue` drives every profession-coloured surface (badges, covers, chips). */
-export const PROFESSIONS = [
-  { key: 'software', label: 'Software', icon: CodeXml, hue: 243 },
-  { key: 'doctor', label: 'Doctor', icon: Stethoscope, hue: 350 },
-  { key: 'healthcare', label: 'Healthcare', icon: HeartPulse, hue: 0 },
-  { key: 'teacher', label: 'Education', icon: GraduationCap, hue: 32 },
-  { key: 'designer', label: 'Design', icon: Palette, hue: 290 },
-  { key: 'engineer', label: 'Engineering', icon: HardHat, hue: 45 },
-  { key: 'lawyer', label: 'Legal', icon: Scale, hue: 210 },
-  { key: 'finance', label: 'Finance', icon: Landmark, hue: 152 },
-  { key: 'marketing', label: 'Marketing', icon: Megaphone, hue: 18 },
-  { key: 'entrepreneur', label: 'Founder', icon: Rocket, hue: 265 },
-  { key: 'student', label: 'Student', icon: BookOpen, hue: 190 },
-  { key: 'creative', label: 'Creative', icon: Clapperboard, hue: 320 },
-  { key: 'other', label: 'Other', icon: Briefcase, hue: 220 },
+/** Icon names stored in the database map to these components (keep in sync with server PROFESSION_ICONS). */
+export const PROFESSION_ICONS = {
+  Accessibility, Ambulance, Anchor, Armchair, Baby, Bed, Bike, BookOpen, Boxes, Brain, BrickWall, Briefcase, Brush,
+  Bubbles, Building, Building2, Bus, Cable, Calculator, Camera, Car, CarTaxiFront, ChartLine, ChefHat, Clapperboard,
+  Cloud, CodeXml, Coffee, Cog, Construction, Container, Cpu, Croissant, Database, Droplets, Dumbbell, Eye, Factory,
+  Fan, Fish, Flag, Flame, Flower2, Footprints, Forklift, Fuel, Gem, GraduationCap, Guitar, Hammer, Hand, HandHeart,
+  Handshake, HardHat, Headset, HeartPulse, Hotel, House, KeyRound, Landmark, Languages, Laptop, Leaf, Lightbulb,
+  Megaphone, Microscope, Mountain, Music, Package, PaintRoller, Paintbrush, Palette, PawPrint, PenTool, Pickaxe, Pill,
+  Plane, Plug, Printer, Receipt, Rocket, Ruler, Scale, School, Scissors, Scroll, Server, Shapes, Shield, ShieldCheck,
+  Shirt, ShoppingCart, Shovel, Signpost, Siren, Smartphone, Soup, Sparkles, Sprout, Stethoscope, Store, Syringe, Tag,
+  Tractor, Truck, Users, UtensilsCrossed, Video, Warehouse, WashingMachine, Wheat, Wine, Wrench, Zap,
+};
+
+export const iconFor = (name) => PROFESSION_ICONS[name] || Briefcase;
+
+export const RATE_UNITS = [
+  { value: 'hour', label: 'per hour', short: 'hr' },
+  { value: 'day', label: 'per day', short: 'day' },
+  { value: 'job', label: 'per job / visit', short: 'job' },
+  { value: 'month', label: 'per month', short: 'month' },
 ];
 
-const byKey = Object.fromEntries(PROFESSIONS.map((p) => [p.key, p]));
+export const CURRENCIES = [
+  { value: 'INR', label: '₹ INR' },
+  { value: 'USD', label: '$ USD' },
+  { value: 'EUR', label: '€ EUR' },
+  { value: 'GBP', label: '£ GBP' },
+  { value: 'AED', label: 'AED' },
+];
 
-export const getProfession = (key) => byKey[key] || byKey.other;
+/** Profession details for a key, with icon component resolved. Reactive once the catalog has loaded. */
+export const getProfession = (key) => useProfessionsStore().get(key);
+export const getCategory = (key) => useProfessionsStore().category(key);

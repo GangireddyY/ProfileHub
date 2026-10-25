@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
-import { Notification, User } from '../models/index.js';
+import { Notification, User, ProfessionRequest } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { decorateUsers } from '../services/social.js';
 import { unreadNotificationCount } from '../services/notifications.js';
+import { allProfessions } from '../services/professions.js';
 import { validate, notFound } from '../utils/http.js';
 
 const router = Router();
@@ -34,6 +35,24 @@ router.get('/', async (req, res) => {
     page.map((n) => n.actor),
   );
 
+  const requestIds = page.filter((n) => n.type.startsWith('profession_') && n.entityId).map((n) => n.entityId);
+  const [requests, professions] = requestIds.length
+    ? await Promise.all([ProfessionRequest.findAll({ where: { id: { [Op.in]: requestIds } } }), allProfessions()])
+    : [[], []];
+  const requestMap = new Map(requests.map((r) => [r.id, r]));
+  const labels = new Map(professions.map((p) => [p.key, p.label]));
+  const metaFor = (n) => {
+    const r = requestMap.get(n.entityId);
+    if (!r) return null;
+    return {
+      label: r.label,
+      status: r.status,
+      reviewNote: r.reviewNote,
+      professionKey: r.professionKey,
+      professionLabel: r.professionKey ? labels.get(r.professionKey) || r.label : null,
+    };
+  };
+
   res.json({
     items: page.map((n, i) => ({
       id: n.id,
@@ -42,6 +61,7 @@ router.get('/', async (req, res) => {
       readAt: n.readAt,
       createdAt: n.createdAt,
       actor: actors[i],
+      meta: metaFor(n),
     })),
     hasMore: rows.length > limit,
     unreadCount: await unreadNotificationCount(me.id),

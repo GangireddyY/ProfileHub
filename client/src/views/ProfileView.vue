@@ -15,13 +15,19 @@ import {
   UserX,
   Sparkles,
   Award,
+  BadgeIndianRupee,
+  Store,
+  Plus,
+  MessageCircle,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
 import { toast } from '@/composables/useToast';
 import { getProfession } from '@/constants/professions';
-import { formatDistance, lastSeenLabel, formatCount } from '@/utils/format';
+import { formatDistance, lastSeenLabel, formatCount, formatRate } from '@/utils/format';
+import { RATE_UNITS } from '@/constants/professions';
+import ListingCard from '@/components/market/ListingCard.vue';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiButton from '@/components/ui/UiButton.vue';
@@ -56,6 +62,8 @@ function openEditor(entry, kind = entry?.kind || 'work') {
 }
 
 const profession = computed(() => getProfession(user.value?.profession));
+const rate = computed(() => formatRate(user.value));
+const rateUnitLabel = computed(() => RATE_UNITS.find((u) => u.value === user.value?.rateUnit)?.label || '');
 const online = computed(() =>
   user.value?.isMe ? realtime.connected && user.value.showOnlineStatus : realtime.isOnline(user.value?.id, user.value?.online),
 );
@@ -158,6 +166,14 @@ async function share() {
                 <UiButton variant="secondary" :icon="Share2" icon-only aria-label="Share profile" @click="share" />
               </template>
               <template v-else>
+                <UiButton
+                  v-if="user.connectionStatus !== 'connected' && user.listingCount"
+                  :to="`/messages/${user.id}`"
+                  variant="secondary"
+                  :icon="MessageCircle"
+                >
+                  Message
+                </UiButton>
                 <ConnectButton :user="user" @change="onStatusChange" />
                 <UiDropdown>
                   <template #trigger="{ toggle }">
@@ -184,6 +200,8 @@ async function share() {
             <p v-if="user.headline && user.headline !== user.roleTitle" class="muted">{{ user.headline }}</p>
 
             <div class="header__meta">
+              <UiBadge v-if="user.availableForWork" tone="success" dot>Available for work</UiBadge>
+              <span v-if="rate" class="rate"><BadgeIndianRupee /> {{ rate }}</span>
               <span v-if="user.city"><MapPin /> {{ user.city }}</span>
               <span v-if="user.distanceKm != null" class="accent"><Navigation /> {{ formatDistance(user.distanceKm) }}</span>
               <UiBadge :tone="online ? 'success' : 'neutral'" dot>{{ lastSeenLabel(online, lastSeen) }}</UiBadge>
@@ -246,6 +264,34 @@ async function share() {
             </div>
             <p v-else class="subtle bio">{{ user.isMe ? 'Add skills from settings so people can find you.' : 'No skills listed.' }}</p>
           </UiCard>
+
+          <UiCard v-if="user.listingCount || user.isMe">
+            <div class="row-between">
+              <h2 class="section-title">
+                For sale
+                <span v-if="user.listingCount" class="subtle">· {{ user.listingCount }}</span>
+              </h2>
+              <UiButton v-if="user.isMe" to="/market/new" size="sm" variant="soft" :icon="Plus">Sell something</UiButton>
+              <UiButton
+                v-else-if="user.listingCount > user.listings.length"
+                :to="{ path: '/market', query: { seller: user.id } }"
+                size="sm"
+                variant="ghost"
+              >
+                See all
+              </UiButton>
+            </div>
+            <div v-if="user.listings?.length" class="listings">
+              <ListingCard v-for="l in user.listings" :key="l.id" :listing="l" compact />
+            </div>
+            <UiEmpty
+              v-else
+              compact
+              :icon="Store"
+              title="Nothing listed yet"
+              description="Sell a vehicle, books, furniture or anything else to people nearby."
+            />
+          </UiCard>
         </div>
 
         <UiCard as="aside" class="details">
@@ -258,6 +304,10 @@ async function share() {
             <li v-if="user.roleTitle">
               <span class="details__icon"><Briefcase /></span>
               <div><small>Role</small>{{ user.roleTitle }}</div>
+            </li>
+            <li v-if="rate">
+              <span class="details__icon details__icon--rate"><BadgeIndianRupee /></span>
+              <div><small>Rate ({{ rateUnitLabel }})</small>{{ rate }}</div>
             </li>
             <li>
               <span class="details__icon"><Award /></span>
@@ -493,6 +543,20 @@ a.stat:hover strong {
 .details__icon svg {
   width: 18px;
   height: 18px;
+}
+.details__icon--rate {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.header__meta .rate {
+  color: var(--success);
+  font-weight: 800;
+}
+.listings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
 }
 
 @media (max-width: 559px) {

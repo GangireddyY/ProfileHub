@@ -1,7 +1,22 @@
 <script setup>
-import { computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Compass, Users, MessageCircle, Settings, LogOut, UserRound, Sun, Moon, WifiOff, Bell } from 'lucide-vue-next';
+import {
+  Compass,
+  Users,
+  MessageCircle,
+  Settings,
+  LogOut,
+  UserRound,
+  Sun,
+  Moon,
+  WifiOff,
+  Bell,
+  Store,
+  Search,
+  ShieldHalf,
+  Tag,
+} from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -23,9 +38,22 @@ const unread = computed(() => (chat.conversationsLoaded ? chat.totalUnread : me.
 
 const nav = computed(() => [
   { to: '/', label: 'Discover', icon: Compass, match: (n) => n === 'discover' },
+  { to: '/market', label: 'Market', icon: Store, match: (n) => ['market', 'listing', 'listing-new', 'listing-edit'].includes(n) },
   { to: '/network', label: 'Network', icon: Users, badge: me.value?.pendingRequests, match: (n) => n === 'network' },
   { to: '/messages', label: 'Messages', icon: MessageCircle, badge: unread.value, match: (n) => n === 'messages' },
 ]);
+const isAdmin = computed(() => me.value?.role === 'admin');
+
+const topQuery = ref('');
+watch(
+  () => route.query.q,
+  (q) => (topQuery.value = route.name === 'search' && typeof q === 'string' ? q : topQuery.value),
+  { immediate: true },
+);
+function submitSearch() {
+  const q = topQuery.value.trim();
+  router.push({ name: 'search', query: q ? { q } : {} });
+}
 
 const tabs = computed(() => [
   ...nav.value,
@@ -55,6 +83,17 @@ function logout() {
           <span>Profile<b>HUB</b></span>
         </RouterLink>
 
+        <form class="topsearch" role="search" @submit.prevent="submitSearch">
+          <Search class="topsearch__icon" aria-hidden="true" />
+          <input
+            v-model="topQuery"
+            type="search"
+            placeholder="Search people, jobs, items…"
+            aria-label="Search ProfileHUB"
+            enterkeyhint="search"
+          />
+        </form>
+
         <nav class="topnav" aria-label="Main">
           <RouterLink
             v-for="item in nav"
@@ -77,6 +116,15 @@ function logout() {
               <WifiOff /> <span class="offline-pill__text">Reconnecting</span>
             </span>
           </Transition>
+
+          <RouterLink
+            to="/search"
+            class="icon-btn search-btn"
+            :class="{ 'is-active': route.name === 'search' }"
+            aria-label="Search"
+          >
+            <Search />
+          </RouterLink>
 
           <RouterLink
             to="/notifications"
@@ -118,7 +166,9 @@ function logout() {
               </div>
             </div>
             <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> View profile</RouterLink>
+            <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> My listings</RouterLink>
             <RouterLink to="/settings" class="menu-item"><Settings /> Settings & privacy</RouterLink>
+            <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> Admin panel</RouterLink>
             <div class="menu-sep" />
             <button type="button" class="menu-item menu-item--danger" @click="logout"><LogOut /> Sign out</button>
           </UiDropdown>
@@ -129,7 +179,7 @@ function logout() {
     <main class="shell__main" :class="{ 'is-full': route.meta.fullHeight }">
       <RouterView v-if="me" v-slot="{ Component, route: r }">
         <Transition name="page" mode="out-in">
-          <component :is="Component" :key="r.meta.fullHeight ? r.name : r.fullPath" />
+          <component :is="Component" :key="r.meta.fullHeight || r.meta.stableKey ? r.name : r.fullPath" />
         </Transition>
       </RouterView>
     </main>
@@ -198,6 +248,39 @@ function logout() {
   margin: 0 auto;
   gap: 4px;
   height: 100%;
+}
+.topsearch {
+  display: none;
+  position: relative;
+  align-items: center;
+  width: clamp(200px, 22vw, 320px);
+}
+.topsearch__icon {
+  position: absolute;
+  left: 12px;
+  width: 17px;
+  height: 17px;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.topsearch input {
+  width: 100%;
+  height: 40px;
+  padding: 0 14px 0 38px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.9rem;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), background-color 0.15s var(--ease);
+}
+.topsearch input::-webkit-search-cancel-button {
+  display: none;
+}
+.topsearch input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: var(--ring);
 }
 .topnav__link {
   position: relative;
@@ -409,6 +492,18 @@ function logout() {
   }
   .shell__main {
     padding-top: 28px;
+  }
+  .topnav__link {
+    padding: 0 12px;
+  }
+}
+
+@media (min-width: 1180px) {
+  .topsearch {
+    display: flex;
+  }
+  .search-btn {
+    display: none;
   }
 }
 </style>

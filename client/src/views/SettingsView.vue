@@ -20,13 +20,22 @@ import {
   KeyRound,
   Trash2,
   TriangleAlert,
+  BriefcaseBusiness,
+  Hourglass,
+  CircleCheck,
+  CircleX,
+  ShieldHalf,
+  ChevronRight,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
+import { useProfessionsStore } from '@/stores/professions';
 import { useGeolocation } from '@/composables/useGeolocation';
 import { toast } from '@/composables/useToast';
-import { errorMessage, fieldErrors } from '@/api/http';
+import { api, errorMessage, fieldErrors } from '@/api/http';
 import { DISTANCE_STEPS, stepForRadius } from '@/constants/filters';
+import { RATE_UNITS, CURRENCIES } from '@/constants/professions';
+import UiSelect from '@/components/ui/UiSelect.vue';
 import { timeAgo } from '@/utils/format';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiInput from '@/components/ui/UiInput.vue';
@@ -47,8 +56,11 @@ const geo = useGeolocation();
 const router = useRouter();
 const me = computed(() => auth.user);
 
+const professions = useProfessionsStore();
+
 const sections = [
   { id: 'profile', label: 'Profile', icon: UserRound },
+  { id: 'work', label: 'Work & rates', icon: BriefcaseBusiness },
   { id: 'location', label: 'Location & discovery', icon: MapPin },
   { id: 'security', label: 'Security', icon: KeyRound },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
@@ -65,17 +77,26 @@ const pickProfile = (u) => ({
   skills: [...(u.skills || [])],
   experienceYears: u.experienceYears,
   city: u.city,
+  rateAmount: u.rateAmount ?? '',
+  rateUnit: u.rateUnit || 'hour',
+  currency: u.currency || 'INR',
+  availableForWork: Boolean(u.availableForWork),
 });
 const form = reactive(pickProfile(me.value));
 const errors = ref({});
 const saving = ref(false);
 const dirty = computed(() => JSON.stringify(form) !== JSON.stringify(pickProfile(me.value)));
+const unitOptions = RATE_UNITS.map((u) => ({ value: u.value, label: u.label }));
 
 async function saveProfile() {
   saving.value = true;
   errors.value = {};
   try {
-    await auth.updateProfile({ ...form, experienceYears: Number(form.experienceYears) || 0 });
+    await auth.updateProfile({
+      ...form,
+      experienceYears: Number(form.experienceYears) || 0,
+      rateAmount: form.rateAmount === '' || form.rateAmount == null ? null : Number(form.rateAmount),
+    });
     Object.assign(form, pickProfile(me.value));
     toast.success('Profile saved');
   } catch (err) {
@@ -89,6 +110,30 @@ async function saveProfile() {
 function resetProfile() {
   Object.assign(form, pickProfile(me.value));
   errors.value = {};
+}
+
+// ---------- Profession requests ----------
+const myRequests = ref([]);
+const REQUEST_STATUS = {
+  pending: { icon: Hourglass, label: 'Waiting for review', tone: 'warning' },
+  approved: { icon: CircleCheck, label: 'Added', tone: 'success' },
+  rejected: { icon: CircleX, label: 'Declined', tone: 'danger' },
+};
+
+async function loadRequests() {
+  try {
+    const { data } = await api.get('/professions/requests/mine');
+    myRequests.value = data.items;
+  } catch {
+    /* non-critical */
+  }
+}
+loadRequests();
+
+async function requestProfession(payload) {
+  await api.post('/professions/requests', payload);
+  toast.success(`We'll notify you when an admin reviews “${payload.label}”.`, { title: 'Request sent' });
+  loadRequests();
 }
 
 // ---------- Settings toggles ----------
@@ -280,7 +325,52 @@ async function deleteAccount() {
               />
             </div>
 
-            <ProfessionPicker v-model="form.profession" label="Profession" :error="errors.profession" />
+            <ProfessionPicker
+              v-model="form.profession"
+              label="Profession"
+              :error="errors.profession"
+              :request-handler="requestProfession"
+            />
+            <ul v-if="myRequests.length" class="requests" aria-label="Your profession requests">
+              <li v-for="r in myRequests" :key="r.id" :class="`requests__item--${REQUEST_STATUS[r.status].tone}`">
+                <component :is="REQUEST_STATUS[r.status].icon" class="requests__icon" />
+                <div class="grow" style="min-width: 0">
+                  <strong>{{ r.label }}</strong>
+                  <span class="muted"> · {{ professions.category(r.category).label }}</span>
+                  <p v-if="r.reviewNote" class="requests__note">“{{ r.reviewNote }}”</p>
+                </div>
+                <span class="requests__status">{{ REQUEST_STATUS[r.status].label }}</span>
+              </li>
+            </ul>
+
+            <section id="work" class="work">
+              <header class="work__head">
+                <span class="section__icon"><BriefcaseBusiness /></span>
+                <div>
+                  <h3 class="section-title">Work &amp; rates</h3>
+                  <p class="muted">Tell people you're open to work and what you charge. Shown on your profile and cards.</p>
+                </div>
+              </header>
+              <UiToggle
+                v-model="form.availableForWork"
+                label="Available for work"
+                description="Shows an “Available” badge and includes you in the hiring filter on Discover."
+              />
+              <div class="rate-grid">
+                <UiSelect v-model="form.currency" label="Currency" :options="CURRENCIES" />
+                <UiInput
+                  v-model="form.rateAmount"
+                  label="Your rate"
+                  type="number"
+                  min="1"
+                  inputmode="numeric"
+                  placeholder="e.g. 500"
+                  :error="errors.rateAmount"
+                  hint="Leave empty to hide your rate"
+                />
+                <UiSelect v-model="form.rateUnit" label="Charged" :options="unitOptions" :error="errors.rateUnit" />
+              </div>
+            </section>
             <UiTextarea v-model="form.bio" label="About" :maxlength="2000" :rows="5" placeholder="Tell people about your work, interests and what you're looking for." :error="errors.bio" />
             <UiTagInput v-model="form.skills" label="Skills" placeholder="Add a skill and press Enter" :error="errors.skills" />
 
@@ -431,6 +521,18 @@ async function deleteAccount() {
           </div>
         </UiCard>
 
+        <!-- Admin -->
+        <UiCard v-if="me.role === 'admin'" class="section account">
+          <div class="row grow" style="--gap: 12px">
+            <span class="section__icon"><ShieldHalf /></span>
+            <div class="grow" style="min-width: 0">
+              <strong>Admin panel</strong>
+              <p class="muted">Review profession requests and manage the profession list.</p>
+            </div>
+          </div>
+          <UiButton to="/admin" variant="soft" :icon-right="ChevronRight">Open</UiButton>
+        </UiCard>
+
         <!-- Account -->
         <UiCard class="section account">
           <div class="row grow" style="--gap: 12px">
@@ -538,6 +640,74 @@ async function deleteAccount() {
 .section__icon svg {
   width: 20px;
   height: 20px;
+}
+.requests {
+  list-style: none;
+  margin: -6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.requests li {
+  --tone: var(--warning);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tone) 9%, transparent);
+  font-size: 0.88rem;
+}
+.requests li.requests__item--success {
+  --tone: var(--success);
+}
+.requests li.requests__item--danger {
+  --tone: var(--danger);
+}
+.requests__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  color: var(--tone);
+}
+.requests__status {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--tone);
+}
+.requests__note {
+  font-size: 0.8rem;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+.work {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: calc(var(--nav-h) + 16px);
+}
+.work__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.work__head p {
+  font-size: 0.88rem;
+}
+.rate-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+@media (min-width: 640px) {
+  .rate-grid {
+    grid-template-columns: 140px minmax(0, 1fr) 200px;
+    align-items: start;
+  }
 }
 .form-actions {
   display: flex;

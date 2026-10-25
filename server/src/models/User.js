@@ -1,8 +1,14 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../config/db.js';
-import { PROFESSIONS } from '../constants/professions.js';
+import { RATE_UNITS, CURRENCIES } from '../constants/professions.js';
+
+export const ROLES = ['member', 'admin'];
 
 export class User extends Model {
+  get isAdmin() {
+    return this.role === 'admin';
+  }
+
   get visiblyOnline() {
     return Boolean(this.showOnlineStatus && this.isOnline);
   }
@@ -30,6 +36,10 @@ export class User extends Model {
       experienceYears: this.experienceYears,
       city: this.city,
       avatarUrl: this.avatarUrl,
+      rateAmount: this.rateAmount,
+      rateUnit: this.rateUnit,
+      currency: this.currency,
+      availableForWork: this.availableForWork,
       online: this.visiblyOnline,
       lastSeenAt: this.showOnlineStatus ? this.lastSeenAt : null,
       createdAt: this.createdAt,
@@ -53,12 +63,13 @@ User.init(
     passwordHash: { type: DataTypes.STRING, allowNull: false },
     passwordChangedAt: { type: DataTypes.DATE, allowNull: true },
     headline: { type: DataTypes.STRING(160), allowNull: false, defaultValue: '' },
-    profession: {
-      type: DataTypes.STRING(32),
-      allowNull: false,
-      defaultValue: 'other',
-      validate: { isIn: [PROFESSIONS] },
-    },
+    /** Key into the `professions` table; validated by the routes since the catalog is editable. */
+    profession: { type: DataTypes.STRING(32), allowNull: false, defaultValue: 'other' },
+    role: { type: DataTypes.STRING(16), allowNull: false, defaultValue: 'member', validate: { isIn: [ROLES] } },
+    rateAmount: { type: DataTypes.INTEGER, allowNull: true },
+    rateUnit: { type: DataTypes.STRING(8), allowNull: false, defaultValue: 'hour', validate: { isIn: [RATE_UNITS] } },
+    currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'INR', validate: { isIn: [CURRENCIES] } },
+    availableForWork: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     roleTitle: { type: DataTypes.STRING(100), allowNull: false, defaultValue: '' },
     bio: { type: DataTypes.TEXT, allowNull: false, defaultValue: '' },
     skills: { type: DataTypes.JSON, allowNull: false, defaultValue: [] },

@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { MessagesSquare, Search, Users } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
@@ -15,6 +15,7 @@ import UiSpinner from '@/components/ui/UiSpinner.vue';
 
 const props = defineProps({ userId: { type: String, default: '' } });
 const router = useRouter();
+const route = useRoute();
 
 const newChatOpen = ref(false);
 const connections = ref([]);
@@ -53,7 +54,11 @@ function startChat(u) {
         <ConversationList :active-id="props.userId" @new-chat="openNewChat" />
       </aside>
       <section class="messages__chat">
-        <ChatPanel v-if="props.userId" :user-id="props.userId" />
+        <ChatPanel
+          v-if="props.userId"
+          :user-id="props.userId"
+          :initial-draft="typeof route.query.text === 'string' ? route.query.text.slice(0, 500) : ''"
+        />
         <div v-else class="messages__placeholder">
           <UiEmpty
             :icon="MessagesSquare"

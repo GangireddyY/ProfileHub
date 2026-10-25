@@ -20,4 +20,9 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || '',
   dbStorage: process.env.DB_STORAGE || './data/profilehub.sqlite',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
+  /** Accounts with these emails are given the admin role every time the server starts. */
+  adminEmails: (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean),
 };

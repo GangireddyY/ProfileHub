@@ -3,8 +3,7 @@ import { Op } from 'sequelize';
 import { z } from 'zod';
 import { Message, User } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getConnectionIds, getStatus } from '../services/social.js';
-import { sendMessage, markConversationRead, conversationWhere } from '../services/messages.js';
+import { sendMessage, markConversationRead, conversationWhere, canMessage, messageableAmong } from '../services/messages.js';
 import { validate, notFound } from '../utils/http.js';
 
 const router = Router();
@@ -26,16 +25,18 @@ router.get('/conversations', async (req, res) => {
   });
 
   const byPartner = new Map();
+  const wroteToMe = new Set();
   for (const m of recent.map((row) => row.get({ plain: true }))) {
     const partnerId = m.senderId === me ? m.receiverId : m.senderId;
     if (!byPartner.has(partnerId)) byPartner.set(partnerId, { lastMessage: m, unread: 0 });
+    if (m.receiverId === me) wroteToMe.add(partnerId);
     if (m.receiverId === me && !m.readAt) byPartner.get(partnerId).unread += 1;
   }
 
   const partnerIds = [...byPartner.keys()];
-  const [users, connected] = await Promise.all([
+  const [users, allowed] = await Promise.all([
     User.findAll({ where: { id: { [Op.in]: partnerIds } } }),
-    getConnectionIds(me),
+    messageableAmong(me, partnerIds, wroteToMe),
   ]);
   const userMap = new Map(users.map((u) => [u.id, u]));
 
@@ -45,7 +46,7 @@ router.get('/conversations', async (req, res) => {
       user: userMap.get(id).toPublic(),
       lastMessage: byPartner.get(id).lastMessage,
       unread: byPartner.get(id).unread,
-      canMessage: connected.has(id),
+      canMessage: allowed.has(id),
     }));
 
   res.json({ items });
@@ -68,9 +69,7 @@ router.get('/:userId', async (req, res) => {
     .slice(0, limit)
     .reverse()
     .map((row) => row.get({ plain: true }));
-  const { status } = await getStatus(me.id, otherId);
-
-  res.json({ user: other.toPublic(), messages, hasMore, canMessage: status === 'connected' });
+  res.json({ user: other.toPublic(), messages, hasMore, canMessage: await canMessage(me.id, otherId) });
 });
 
 router.post('/:userId', async (req, res) => {

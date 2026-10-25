@@ -12,7 +12,7 @@ const p = computed(() => getProfession(props.profession));
 <template>
   <span class="pbadge" :class="`pbadge--${size}`" :style="{ '--hue': p.hue }">
     <component :is="p.icon" class="pbadge__icon" aria-hidden="true" />
-    {{ p.label }}
+    <span class="pbadge__text">{{ p.label }}</span>
   </span>
 </template>
 
@@ -29,6 +29,12 @@ const p = computed(() => getProfession(props.profession));
   font-size: 0.78rem;
   font-weight: 700;
   white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+}
+.pbadge__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 [data-theme='dark'] .pbadge {
   background: hsl(var(--hue) 60% 50% / 0.18);

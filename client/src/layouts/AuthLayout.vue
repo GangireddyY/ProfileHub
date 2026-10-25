@@ -1,5 +1,6 @@
 <script setup>
-import { Radar, MessageCircle, Users, ShieldCheck, Sun, Moon, MapPin, UserPlus } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { Radar, MessageCircle, Store, ShieldCheck, Sun, Moon, MapPin, UserPlus } from 'lucide-vue-next';
 import { getProfession } from '@/constants/professions';
 import { useThemeStore } from '@/stores/theme';
 
@@ -7,21 +8,30 @@ const theme = useThemeStore();
 const year = new Date().getFullYear();
 
 const features = [
-  { icon: Radar, title: 'Discover nearby', text: 'Find professionals within any range.' },
-  { icon: Users, title: 'Grow your network', text: 'Invite, connect and keep track.' },
+  { icon: Radar, title: 'Hire nearby', text: 'Filter by profession, rate and distance.' },
+  { icon: Store, title: 'Buy & sell', text: 'Vehicles, books, furniture and more.' },
   { icon: MessageCircle, title: 'Realtime chat', text: 'Live typing & read receipts.' },
   { icon: ShieldCheck, title: 'You stay in control', text: 'Location is always opt-in.' },
 ];
 
+const TRUST = [
+  { i: 'RG', hue: 25 },
+  { i: 'AS', hue: 243 },
+  { i: 'PN', hue: 350 },
+  { i: 'IK', hue: 200 },
+  { i: 'MK', hue: 152 },
+];
+
 /** Positions are percentages inside the radar circle. */
-const orbit = [
+const ORBIT = [
   { key: 'software', x: 50, y: 13 },
-  { key: 'doctor', x: 84, y: 36 },
-  { key: 'designer', x: 74, y: 80 },
-  { key: 'teacher', x: 32, y: 84 },
-  { key: 'finance', x: 15, y: 54 },
-  { key: 'lawyer', x: 25, y: 23 },
-].map((o, i) => ({ ...getProfession(o.key), x: o.x, y: o.y, delay: `${i * 0.45}s` }));
+  { key: 'electrician', x: 84, y: 36 },
+  { key: 'doctor', x: 74, y: 80 },
+  { key: 'driver', x: 32, y: 84 },
+  { key: 'teacher', x: 15, y: 54 },
+  { key: 'carpenter', x: 25, y: 23 },
+];
+const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: o.x, y: o.y, delay: `${i * 0.45}s` })));
 </script>
 
 <template>
@@ -40,59 +50,69 @@ const orbit = [
           <span>ProfileHUB</span>
         </RouterLink>
 
-        <div class="hero__copy">
-          <span class="hero__eyebrow"><span class="live-dot" /> Professionals near you, live</span>
-          <h1>Your professional world, <span class="gradient-text">right around the corner.</span></h1>
-          <p class="hero__lead">
-            Doctors, developers, designers, teachers and more. Meet the people near you and build a network that matters.
-          </p>
+        <div class="hero__center">
+          <div class="hero__copy">
+            <span class="hero__eyebrow"><span class="live-dot" /> Professionals near you, live</span>
+            <h1>Your professional world, <span class="gradient-text">right around the corner.</span></h1>
+            <p class="hero__lead">
+              Doctors, developers, electricians, drivers, teachers and 150+ more professions. Hire nearby talent, buy
+              and sell locally, and build a network that matters.
+            </p>
+          </div>
+
+          <div class="hero__visual" aria-hidden="true">
+            <div class="radar">
+              <span class="radar__ring" />
+              <span class="radar__ring" />
+              <span class="radar__ring" />
+              <span class="radar__sweep" />
+              <span class="radar__you" />
+              <span
+                v-for="p in orbit"
+                :key="p.key"
+                class="radar__node"
+                :style="{ '--hue': p.hue, left: `${p.x}%`, top: `${p.y}%`, animationDelay: p.delay }"
+              >
+                <component :is="p.icon" />
+              </span>
+            </div>
+
+            <div class="glass glass--profile">
+              <span class="glass__avatar" style="--hue: 25">RG</span>
+              <div class="glass__body">
+                <strong>Ramesh Gowda <em>₹350/hr</em></strong>
+                <span class="glass__meta"><MapPin /> Electrician · 0.8 km</span>
+              </div>
+              <span class="glass__action"><UserPlus /></span>
+            </div>
+
+            <div class="glass glass--message">
+              <span class="glass__avatar" style="--hue: 243">SM</span>
+              <div class="glass__body">
+                <strong>Sam Miller <em>now</em></strong>
+                <span class="glass__text">Coffee near the office tomorrow?</span>
+              </div>
+              <span class="typing"><i /><i /><i /></span>
+            </div>
+          </div>
+
+          <ul class="hero__features">
+            <li v-for="f in features" :key="f.title">
+              <span class="hero__feature-icon"><component :is="f.icon" /></span>
+              <div>
+                <strong>{{ f.title }}</strong>
+                <p>{{ f.text }}</p>
+              </div>
+            </li>
+          </ul>
         </div>
 
-        <div class="hero__visual" aria-hidden="true">
-          <div class="radar">
-            <span class="radar__ring" />
-            <span class="radar__ring" />
-            <span class="radar__ring" />
-            <span class="radar__sweep" />
-            <span class="radar__you" />
-            <span
-              v-for="p in orbit"
-              :key="p.key"
-              class="radar__node"
-              :style="{ '--hue': p.hue, left: `${p.x}%`, top: `${p.y}%`, animationDelay: p.delay }"
-            >
-              <component :is="p.icon" />
-            </span>
+        <div class="hero__trust">
+          <div class="hero__avatars" aria-hidden="true">
+            <span v-for="(a, i) in TRUST" :key="a.i" :style="{ '--hue': a.hue, zIndex: TRUST.length - i }">{{ a.i }}</span>
           </div>
-
-          <div class="glass glass--profile">
-            <span class="glass__avatar" style="--hue: 350">AK</span>
-            <div class="glass__body">
-              <strong>Dr. Aisha Khan</strong>
-              <span class="glass__meta"><MapPin /> Cardiologist · 0.8 km</span>
-            </div>
-            <span class="glass__action"><UserPlus /></span>
-          </div>
-
-          <div class="glass glass--message">
-            <span class="glass__avatar" style="--hue: 243">SM</span>
-            <div class="glass__body">
-              <strong>Sam Miller <em>now</em></strong>
-              <span class="glass__text">Coffee near the office tomorrow?</span>
-            </div>
-            <span class="typing"><i /><i /><i /></span>
-          </div>
+          <p><strong>150+ professions</strong> · from drivers and electricians to doctors and developers</p>
         </div>
-
-        <ul class="hero__features">
-          <li v-for="f in features" :key="f.title">
-            <span class="hero__feature-icon"><component :is="f.icon" /></span>
-            <div>
-              <strong>{{ f.title }}</strong>
-              <p>{{ f.text }}</p>
-            </div>
-          </li>
-        </ul>
       </div>
     </aside>
 
@@ -214,11 +234,47 @@ const orbit = [
   height: 100%;
   max-width: 600px;
   margin: 0 auto;
-  padding: 36px 48px;
+  padding: 32px 48px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   gap: 24px;
+}
+.hero__center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 28px;
+  min-height: 0;
+}
+.hero__trust {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+.hero__trust strong {
+  color: #fff;
+}
+.hero__avatars {
+  display: flex;
+  flex-shrink: 0;
+}
+.hero__avatars span {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 0.66rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, hsl(var(--hue) 75% 60%), hsl(calc(var(--hue) + 35) 75% 48%));
+  box-shadow: 0 0 0 2px #070b1a;
+}
+.hero__avatars span + span {
+  margin-left: -9px;
 }
 .hero__copy {
   display: flex;
@@ -636,7 +692,7 @@ const orbit = [
     max-width: none;
   }
   .auth__panel {
-    max-width: 420px;
+    max-width: 460px;
     padding: 0;
     background: none;
     border: 0;
@@ -648,6 +704,14 @@ const orbit = [
 @media (min-width: 1024px) and (max-height: 860px) {
   .hero__visual {
     display: none;
+  }
+}
+@media (min-width: 1024px) and (max-height: 640px) {
+  .hero__features {
+    display: none;
+  }
+  .hero__inner {
+    padding-block: 24px;
   }
 }
 

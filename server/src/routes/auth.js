@@ -3,9 +3,11 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { User } from '../models/index.js';
-import { PROFESSIONS } from '../constants/professions.js';
 import { requireAuth } from '../middleware/auth.js';
 import { buildSelf } from '../services/social.js';
+import { assertProfession, submitRequest } from '../services/professions.js';
+import { professionRequestSchema } from './professions.js';
+import { RATE_UNITS, CURRENCIES } from '../constants/professions.js';
 import { signToken } from '../utils/token.js';
 import { validate, conflict, HttpError } from '../utils/http.js';
 
@@ -33,8 +35,16 @@ const signupSchema = z.object({
     .string()
     .min(8, 'Password must be at least 8 characters')
     .max(100, 'Password is too long'),
-  profession: z.enum(PROFESSIONS, { error: 'Pick a profession' }),
+  /** Usually chosen on the welcome screen right after signup, so it starts as "other". */
+  profession: z.string().trim().min(1).max(48).optional().default('other'),
   roleTitle: z.string().trim().max(100).optional().default(''),
+  city: z.string().trim().max(100).optional().default(''),
+  availableForWork: z.boolean().optional().default(false),
+  rateAmount: z.coerce.number().int('Use a whole number').min(1, 'Rate must be at least 1').max(10_000_000).nullable().optional(),
+  rateUnit: z.enum(RATE_UNITS).optional().default('hour'),
+  currency: z.enum(CURRENCIES).optional().default('INR'),
+  /** Sent when the member's profession isn't in the list yet; they start as "Other" until an admin adds it. */
+  requestedProfession: professionRequestSchema.optional(),
 });
 
 const loginSchema = z.object({
@@ -49,6 +59,7 @@ router.post('/signup', authLimiter, async (req, res) => {
   if (await User.count({ where: { email } })) {
     throw conflict('An account with this email already exists');
   }
+  await assertProfession(data.profession);
 
   const passwordHash = await bcrypt.hash(data.password, 10);
   const user = await User.create({
@@ -58,9 +69,23 @@ router.post('/signup', authLimiter, async (req, res) => {
     profession: data.profession,
     roleTitle: data.roleTitle,
     headline: data.roleTitle,
+    city: data.city,
+    availableForWork: data.availableForWork,
+    rateAmount: data.rateAmount ?? null,
+    rateUnit: data.rateUnit,
+    currency: data.currency,
   });
 
-  res.status(201).json({ token: signToken(user.id), user: await buildSelf(user) });
+  let professionRequest = null;
+  if (data.requestedProfession) {
+    try {
+      professionRequest = (await submitRequest(user, data.requestedProfession)).toPublic();
+    } catch {
+      // The account matters more than the request; it can be re-sent from settings.
+    }
+  }
+
+  res.status(201).json({ token: signToken(user.id), user: await buildSelf(user), professionRequest });
 });
 
 router.post('/login', authLimiter, async (req, res) => {

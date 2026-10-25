@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { errorMessage, fieldErrors } from '@/api/http';
+import { needsOnboarding } from '@/utils/onboarding';
 import UiInput from '@/components/ui/UiInput.vue';
 import UiButton from '@/components/ui/UiButton.vue';
 
@@ -26,8 +27,8 @@ async function submit() {
   loading.value = true;
   try {
     await auth.login(form);
-    const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : '/';
-    router.replace(redirect);
+    const redirect = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/') ? route.query.redirect : null;
+    router.replace(redirect || (needsOnboarding(auth.user) ? { name: 'welcome' } : '/'));
   } catch (err) {
     errors.value = fieldErrors(err);
     formError.value = errorMessage(err);

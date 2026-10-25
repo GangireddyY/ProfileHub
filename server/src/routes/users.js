@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
-import { sequelize, isPostgres } from '../config/db.js';
-import { PROFESSIONS } from '../constants/professions.js';
-import { User } from '../models/index.js';
+import { CATEGORY_KEYS, RATE_UNITS, CURRENCIES } from '../constants/professions.js';
+import { User, Listing } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcastPresence } from '../socket/index.js';
 import { buildSelf, decorateUsers, getConnectionIds, getConnectionCounts } from '../services/social.js';
 import { listExperiences } from '../services/experiences.js';
+import { assertProfession, activeProfessions, professionKeysInCategories } from '../services/professions.js';
+import { userSearchClause } from '../services/search.js';
 import { boundingBox, distanceBetween } from '../utils/geo.js';
 import { validate, notFound } from '../utils/http.js';
 
@@ -16,17 +17,21 @@ router.use(requireAuth);
 
 const boolish = z.preprocess((v) => v === true || v === 'true' || v === '1', z.boolean());
 const optionalNumber = (schema) => z.preprocess((v) => (v === '' || v == null ? undefined : v), schema.optional());
+const csv = z
+  .string()
+  .optional()
+  .default('')
+  .transform((s) => s.split(',').map((p) => p.trim()).filter(Boolean));
 
 const discoverSchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
-  professions: z
-    .string()
-    .optional()
-    .default('')
-    .transform((s) => s.split(',').map((p) => p.trim()).filter((p) => PROFESSIONS.includes(p))),
+  professions: csv,
+  categories: csv.transform((list) => list.filter((c) => CATEGORY_KEYS.includes(c))),
   maxDistance: optionalNumber(z.coerce.number().positive().max(20000)),
   onlineOnly: boolish,
-  sort: z.enum(['recommended', 'distance', 'newest', 'connections']).optional().default('recommended'),
+  availableOnly: boolish,
+  maxRate: optionalNumber(z.coerce.number().int().positive().max(10_000_000)),
+  sort: z.enum(['recommended', 'distance', 'newest', 'connections', 'rate']).optional().default('recommended'),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
@@ -37,7 +42,14 @@ const profileSchema = z
   .object({
     name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80),
     headline: z.string().trim().max(160),
-    profession: z.enum(PROFESSIONS),
+    profession: z.string().trim().min(1, 'Pick a profession').max(48),
+    rateAmount: z.preprocess(
+      (v) => (v === '' || v === undefined ? null : v),
+      z.coerce.number().int('Use a whole number').min(1, 'Rate must be at least 1').max(10_000_000).nullable(),
+    ),
+    rateUnit: z.enum(RATE_UNITS),
+    currency: z.enum(CURRENCIES),
+    availableForWork: z.boolean(),
     roleTitle: z.string().trim().max(100),
     bio: z.string().trim().max(2000, 'Bio can be at most 2000 characters'),
     skills: z
@@ -64,25 +76,12 @@ const locationSchema = z.object({
   city: z.string().trim().max(100).optional(),
 });
 
-function searchClause(q) {
-  const like = isPostgres() ? Op.iLike : Op.like;
-  const term = `%${q.replace(/[%_]/g, '')}%`;
-  const castType = sequelize.getDialect() === 'mysql' ? 'CHAR' : 'TEXT';
-  return {
-    [Op.or]: [
-      { name: { [like]: term } },
-      { roleTitle: { [like]: term } },
-      { headline: { [like]: term } },
-      { city: { [like]: term } },
-      sequelize.where(sequelize.cast(sequelize.col('skills'), castType), { [like]: term }),
-    ],
-  };
-}
-
-function recommendationScore(me, user, distanceKm) {
+function recommendationScore(me, user, distanceKm, categoryOf) {
   let score = 0;
   if (user.profession === me.profession) score += 3;
+  else if (categoryOf.get(user.profession) === categoryOf.get(me.profession)) score += 1.5;
   if (user.visiblyOnline) score += 1.5;
+  if (user.availableForWork) score += 0.5;
   if (distanceKm != null) score += Math.max(0, 2 - distanceKm / 50);
   const mySkills = new Set((me.skills || []).map((s) => s.toLowerCase()));
   for (const s of user.skills || []) if (mySkills.has(s.toLowerCase())) score += 0.5;
@@ -94,9 +93,14 @@ router.get('/discover', async (req, res) => {
   const f = validate(discoverSchema, req.query);
 
   const where = { id: { [Op.ne]: me.id }, discoverable: true };
-  if (f.professions.length) where.profession = { [Op.in]: f.professions };
+  const and = [];
+  if (f.professions.length) and.push({ profession: { [Op.in]: f.professions } });
+  if (f.categories.length) and.push({ profession: { [Op.in]: await professionKeysInCategories(f.categories) } });
   if (f.onlineOnly) Object.assign(where, { isOnline: true, showOnlineStatus: true });
-  if (f.q) where[Op.and] = [searchClause(f.q)];
+  if (f.availableOnly) where.availableForWork = true;
+  if (f.maxRate != null) where.rateAmount = { [Op.ne]: null, [Op.lte]: f.maxRate };
+  if (f.q) and.push(await userSearchClause(f.q));
+  if (and.length) where[Op.and] = and;
 
   const distanceApplied = f.maxDistance != null && me.hasLocation;
   if (distanceApplied) {
@@ -121,8 +125,11 @@ router.get('/discover', async (req, res) => {
   } else if (f.sort === 'connections') {
     const counts = await getConnectionCounts(rows.map((r) => r.user.id));
     rows.sort((a, b) => (counts.get(b.user.id) || 0) - (counts.get(a.user.id) || 0));
+  } else if (f.sort === 'rate') {
+    rows.sort((a, b) => (a.user.rateAmount ?? Infinity) - (b.user.rateAmount ?? Infinity));
   } else if (f.sort === 'recommended') {
-    for (const r of rows) r.score = recommendationScore(me, r.user, r.distanceKm);
+    const categoryOf = new Map((await activeProfessions()).map((p) => [p.key, p.category]));
+    for (const r of rows) r.score = recommendationScore(me, r.user, r.distanceKm, categoryOf);
     rows.sort((a, b) => b.score - a.score);
   }
 
@@ -142,6 +149,7 @@ router.get('/discover', async (req, res) => {
 
 router.patch('/me', async (req, res) => {
   const patch = validate(profileSchema, req.body);
+  if (patch.profession !== undefined && patch.profession !== req.user.profession) await assertProfession(patch.profession);
   await req.user.update(patch);
   res.json({ user: await buildSelf(req.user) });
 });
@@ -177,18 +185,19 @@ router.get('/:id', async (req, res) => {
   const me = req.user;
 
   if (id === me.id) {
-    const [self, experiences] = await Promise.all([buildSelf(me), listExperiences(me.id)]);
-    return res.json({ user: { ...self, isMe: true, mutualCount: 0, mutualPreview: [], experiences } });
+    const [self, experiences, listings] = await Promise.all([buildSelf(me), listExperiences(me.id), recentListings(me.id)]);
+    return res.json({ user: { ...self, isMe: true, mutualCount: 0, mutualPreview: [], experiences, ...listings } });
   }
 
   const user = await User.findByPk(id);
   if (!user) throw notFound('This profile does not exist');
 
-  const [[decorated], myIds, theirIds, experiences] = await Promise.all([
+  const [[decorated], myIds, theirIds, experiences, listings] = await Promise.all([
     decorateUsers(me, [user]),
     getConnectionIds(me.id),
     getConnectionIds(user.id),
     listExperiences(user.id),
+    recentListings(user.id),
   ]);
   const mutualIds = [...myIds].filter((x) => theirIds.has(x));
   const mutualPreview = mutualIds.length
@@ -199,7 +208,16 @@ router.get('/:id', async (req, res) => {
       }))
     : [];
 
-  res.json({ user: { ...decorated, isMe: false, mutualCount: mutualIds.length, mutualPreview, experiences } });
+  res.json({ user: { ...decorated, isMe: false, mutualCount: mutualIds.length, mutualPreview, experiences, ...listings } });
 });
+
+async function recentListings(sellerId) {
+  const where = { sellerId, status: 'active' };
+  const [rows, count] = await Promise.all([
+    Listing.findAll({ where, order: [['createdAt', 'DESC']], limit: 6 }),
+    Listing.count({ where }),
+  ]);
+  return { listings: rows.map((l) => l.toPublic()), listingCount: count };
+}
 
 export default router;

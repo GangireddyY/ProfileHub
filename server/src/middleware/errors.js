@@ -18,7 +18,12 @@ export function errorHandler(err, req, res, next) {
     return res.status(400).json({ message: err.errors?.[0]?.message || 'Invalid data' });
   }
   if (err instanceof multer.MulterError) {
-    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Image must be 5 MB or smaller' : 'Upload failed, please try again';
+    const messages = {
+      LIMIT_FILE_SIZE: 'That image is too large',
+      LIMIT_FILE_COUNT: 'Too many photos in one upload',
+      LIMIT_UNEXPECTED_FILE: 'Too many photos in one upload',
+    };
+    const message = messages[err.code] || 'Upload failed, please try again';
     return res.status(400).json({ message });
   }
   if (err?.type === 'entity.parse.failed') {

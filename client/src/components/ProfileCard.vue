@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { MapPin, Users, Navigation } from 'lucide-vue-next';
 import { getProfession } from '@/constants/professions';
 import { useRealtimeStore } from '@/stores/realtime';
-import { formatDistance, formatCount } from '@/utils/format';
+import { formatDistance, formatCount, formatRate } from '@/utils/format';
 import UiAvatar from './ui/UiAvatar.vue';
 import ProfessionBadge from './ProfessionBadge.vue';
 import ConnectButton from './ConnectButton.vue';
@@ -14,11 +14,13 @@ const emit = defineEmits(['change']);
 const realtime = useRealtimeStore();
 const hue = computed(() => getProfession(props.user.profession).hue);
 const online = computed(() => realtime.isOnline(props.user.id, props.user.online));
+const rate = computed(() => formatRate(props.user));
 </script>
 
 <template>
   <article class="pcard" :style="{ '--hue': hue }">
     <div class="pcard__cover">
+      <span v-if="user.availableForWork" class="pcard__available">Available</span>
       <ProfessionBadge :profession="user.profession" size="sm" class="pcard__badge" />
     </div>
 
@@ -26,6 +28,7 @@ const online = computed(() => realtime.isOnline(props.user.id, props.user.online
       <UiAvatar :name="user.name" :src="user.avatarUrl" :size="76" :online="online" ring class="pcard__avatar" />
       <h3 class="pcard__name truncate">{{ user.name }}</h3>
       <p class="pcard__role">{{ user.roleTitle || user.headline || 'Member' }}</p>
+      <span v-if="rate" class="pcard__rate">{{ rate }}</span>
 
       <div class="pcard__meta">
         <span v-if="user.city" class="pcard__meta-item"><MapPin />{{ user.city }}</span>
@@ -82,9 +85,46 @@ const online = computed(() => realtime.isOnline(props.user.id, props.user.online
   top: 10px;
   right: 10px;
   z-index: 1;
+  max-width: calc(100% - 20px);
   background: rgba(255, 255, 255, 0.92) !important;
   color: hsl(var(--hue) 65% 35%) !important;
   backdrop-filter: blur(6px);
+}
+.pcard__available + .pcard__badge {
+  max-width: calc(100% - 120px);
+}
+.pcard__available {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #047857;
+  font-size: 0.72rem;
+  font-weight: 700;
+  backdrop-filter: blur(6px);
+}
+.pcard__available::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #10b981;
+}
+.pcard__rate {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: var(--success-soft);
+  color: var(--success);
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 .pcard__main {
   display: flex;

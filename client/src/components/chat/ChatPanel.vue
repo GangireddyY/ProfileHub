@@ -11,7 +11,11 @@ import UiSpinner from '@/components/ui/UiSpinner.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 
-const props = defineProps({ userId: { type: String, required: true } });
+const props = defineProps({
+  userId: { type: String, required: true },
+  /** Pre-filled text, e.g. "Is this still available?" when coming from a listing. */
+  initialDraft: { type: String, default: '' },
+});
 
 const auth = useAuthStore();
 const chat = useChatStore();
@@ -76,10 +80,11 @@ watch(
       stopTyping(oldId);
       chat.closeThread(oldId);
     }
-    draft.value = '';
+    draft.value = oldId ? '' : props.initialDraft;
     await chat.openThread(id);
     scrollToBottom();
-    if (!coarsePointer) input.value?.focus();
+    if (draft.value) nextTick(autoGrow);
+    if (!coarsePointer || draft.value) input.value?.focus();
   },
   { immediate: true },
 );
@@ -224,7 +229,7 @@ onBeforeUnmount(() => {
 
     <div v-if="t?.loaded && !t.canMessage" class="chat__locked">
       <Lock />
-      <span>You can only message people in your network.</span>
+      <span>You can message people in your network, or members who are selling something.</span>
       <UiButton :to="`/u/${userId}`" size="sm" variant="soft">View profile</UiButton>
     </div>
 

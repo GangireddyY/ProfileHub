@@ -50,6 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function signup(payload) {
     const { data } = await api.post('/auth/signup', payload);
     setSession(data);
+    return data;
   }
 
   function logout() {

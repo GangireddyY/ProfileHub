@@ -17,3 +17,9 @@ export async function requireAuth(req, res, next) {
     res.status(401).json({ message: 'Session expired, please sign in again' });
   }
 }
+
+/** Use after requireAuth. */
+export function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ message: 'Only admins can do this' });
+  next();
+}

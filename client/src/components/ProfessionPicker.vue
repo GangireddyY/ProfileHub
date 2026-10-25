@@ -1,98 +1,185 @@
 <script setup>
-import { PROFESSIONS } from '@/constants/professions';
+import { ref, computed } from 'vue';
+import { Search, ChevronRight } from 'lucide-vue-next';
+import { useProfessionsStore } from '@/stores/professions';
+import ProfessionDialog from './ProfessionDialog.vue';
 
+/** Compact field: shows the current profession and opens the full-screen browser to change it. */
 const model = defineModel({ type: String, default: '' });
 defineProps({
   label: { type: String, default: '' },
   error: { type: String, default: '' },
+  requestHandler: { type: Function, default: null },
+  /** Show one-tap chips for common professions under the field. */
+  quickPicks: { type: Boolean, default: true },
 });
+
+const QUICK = ['software', 'driver', 'electrician', 'teacher', 'daily_labour', 'nurse', 'plumber', 'delivery'];
+
+const store = useProfessionsStore();
+store.load().catch(() => {});
+
+const open = ref(false);
+const selected = computed(() => (model.value && model.value !== 'other' ? store.get(model.value) : null));
+const quick = computed(() => QUICK.map((k) => store.list.find((p) => p.key === k)).filter(Boolean));
 </script>
 
 <template>
-  <fieldset class="picker">
-    <legend v-if="label" class="field__label">{{ label }}</legend>
-    <div class="picker__grid" role="radiogroup">
+  <div class="picker">
+    <span v-if="label" class="field__label">{{ label }}</span>
+
+    <button
+      type="button"
+      class="trigger"
+      :class="{ 'is-set': selected, 'has-error': error }"
+      :style="selected ? { '--hue': selected.hue } : undefined"
+      @click="open = true"
+    >
+      <span class="trigger__icon">
+        <component :is="selected.icon" v-if="selected" />
+        <Search v-else />
+      </span>
+      <span class="trigger__text">
+        <strong>{{ selected?.label || 'Choose your profession' }}</strong>
+        <small>{{ selected ? store.category(selected.category).label : `Search or browse ${store.list.length || 150} professions` }}</small>
+      </span>
+      <span class="trigger__action">{{ selected ? 'Change' : 'Browse' }} <ChevronRight /></span>
+    </button>
+
+    <div v-if="quickPicks && quick.length" class="quick">
       <button
-        v-for="p in PROFESSIONS"
+        v-for="p in quick"
         :key="p.key"
         type="button"
-        role="radio"
-        class="picker__item"
+        class="quick__pill"
         :class="{ 'is-active': model === p.key }"
-        :aria-checked="model === p.key"
         :style="{ '--hue': p.hue }"
         @click="model = p.key"
       >
-        <span class="picker__icon"><component :is="p.icon" /></span>
-        <span class="picker__label">{{ p.label }}</span>
+        <component :is="p.icon" /> {{ p.label }}
       </button>
     </div>
+
     <p v-if="error" class="field__msg field__msg--error">{{ error }}</p>
-  </fieldset>
+
+    <ProfessionDialog v-model:open="open" v-model="model" :request-handler="requestHandler" />
+  </div>
 </template>
 
 <style scoped>
 .picker {
-  border: 0;
-  padding: 0;
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.trigger {
+  --hue: 243;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1.5px dashed var(--border-strong);
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease), transform 0.15s var(--ease);
+}
+.trigger:hover {
+  border-color: var(--primary);
+  box-shadow: 0 10px 24px -16px color-mix(in srgb, var(--primary) 70%, transparent);
+  transform: translateY(-1px);
+}
+.trigger.is-set {
+  border-style: solid;
+  border-color: hsl(var(--hue) 60% 55% / 0.45);
+  background: hsl(var(--hue) 85% 55% / 0.06);
+}
+.trigger.has-error {
+  border-color: var(--danger);
+}
+.trigger__icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.trigger.is-set .trigger__icon {
+  background: linear-gradient(135deg, hsl(var(--hue) 72% 58%), hsl(calc(var(--hue) + 28) 70% 48%));
+  color: #fff;
+}
+.trigger__icon svg {
+  width: 22px;
+  height: 22px;
+}
+.trigger__text {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  line-height: 1.3;
 }
-.picker__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
+.trigger__text strong {
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.picker__item {
+.trigger__text small {
+  font-size: 0.8rem;
+  color: var(--text-3);
+}
+.trigger__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+.trigger__action svg {
+  width: 16px;
+  height: 16px;
+}
+.quick {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.quick__pill {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 6px;
-  border-radius: var(--radius);
-  border: 1.5px solid var(--border);
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
   background: var(--surface);
-  transition: all 0.18s var(--ease);
-}
-.picker__item:hover {
-  border-color: hsl(var(--hue) 60% 60%);
-}
-.picker__icon {
-  display: grid;
-  place-items: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  background: hsl(var(--hue) 85% 95%);
-  color: hsl(var(--hue) 65% 42%);
-  transition: all 0.18s var(--ease);
-}
-[data-theme='dark'] .picker__icon {
-  background: hsl(var(--hue) 60% 50% / 0.18);
-  color: hsl(var(--hue) 85% 75%);
-}
-.picker__icon svg {
-  width: 20px;
-  height: 20px;
-}
-.picker__label {
+  color: var(--text-2);
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-2);
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease);
 }
-.picker__item.is-active {
+.quick__pill svg {
+  width: 14px;
+  height: 14px;
+  color: hsl(var(--hue) 65% 48%);
+}
+.quick__pill:hover {
+  border-color: hsl(var(--hue) 60% 60%);
+}
+.quick__pill.is-active {
   border-color: hsl(var(--hue) 65% 52%);
-  background: hsl(var(--hue) 85% 52% / 0.08);
-  box-shadow: 0 0 0 3px hsl(var(--hue) 70% 55% / 0.18);
-}
-.picker__item.is-active .picker__icon {
   background: hsl(var(--hue) 65% 52%);
   color: #fff;
 }
-.picker__item.is-active .picker__label {
-  color: var(--text);
+.quick__pill.is-active svg {
+  color: #fff;
 }
 </style>

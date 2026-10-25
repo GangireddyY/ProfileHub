@@ -1,11 +1,26 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
-import { Search, SlidersHorizontal, LocateFixed, SearchX, MapPin, Users, Inbox, X } from 'lucide-vue-next';
+import { useRoute } from 'vue-router';
+import {
+  Search,
+  SlidersHorizontal,
+  LocateFixed,
+  SearchX,
+  MapPin,
+  Users,
+  Inbox,
+  X,
+  BadgeIndianRupee,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
+import { useProfessionsStore } from '@/stores/professions';
 import { useGeolocation } from '@/composables/useGeolocation';
 import { toast } from '@/composables/useToast';
-import { PROFESSIONS, getProfession } from '@/constants/professions';
+import { getProfession } from '@/constants/professions';
+import { formatRate, formatMoney } from '@/utils/format';
 import { DISTANCE_STEPS, DEFAULT_FILTERS, stepForRadius } from '@/constants/filters';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiButton from '@/components/ui/UiButton.vue';
@@ -21,10 +36,12 @@ import ProfessionBadge from '@/components/ProfessionBadge.vue';
 
 const STORAGE_KEY = 'ph_filters';
 const auth = useAuthStore();
+const professions = useProfessionsStore();
 const geo = useGeolocation();
+const route = useRoute();
 const me = computed(() => auth.user);
 
-function initialFilters() {
+function savedFilters() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
     if (saved) return { ...DEFAULT_FILTERS, ...saved };
@@ -35,6 +52,15 @@ function initialFilters() {
     ...DEFAULT_FILTERS,
     distanceIdx: me.value?.hasLocation ? stepForRadius(me.value.discoveryRadiusKm) : DEFAULT_FILTERS.distanceIdx,
   };
+}
+
+/** Links from search (`?profession=driver` or `?q=…`) start from a clean slate for that query. */
+function initialFilters() {
+  const base = savedFilters();
+  const { profession, q } = route.query;
+  if (typeof profession === 'string' && profession) return { ...base, q: '', professions: [profession], categories: [] };
+  if (typeof q === 'string' && q) return { ...base, q, professions: [], categories: [] };
+  return base;
 }
 
 const filters = ref(initialFilters());
@@ -54,8 +80,13 @@ const activeFilterCount = computed(
   () =>
     (maxDistance.value != null && me.value?.hasLocation ? 1 : 0) +
     (filters.value.onlineOnly ? 1 : 0) +
+    (filters.value.availableOnly ? 1 : 0) +
+    (filters.value.maxRate != null ? 1 : 0) +
     (filters.value.sort !== 'recommended' ? 1 : 0),
 );
+const pickedProfessions = computed(() => filters.value.professions.map((key) => getProfession(key)));
+const myRate = computed(() => formatRate(me.value));
+const profileIncomplete = computed(() => me.value?.profession === 'other' && !me.value?.roleTitle);
 const greeting = computed(() => {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
@@ -75,8 +106,11 @@ async function load({ append = false } = {}) {
       params: {
         q: f.q || undefined,
         professions: f.professions.join(',') || undefined,
+        categories: f.categories.join(',') || undefined,
         maxDistance: maxDistance.value ?? undefined,
         onlineOnly: f.onlineOnly || undefined,
+        availableOnly: f.availableOnly || undefined,
+        maxRate: f.maxRate ?? undefined,
         sort: f.sort,
         page: append ? page.value + 1 : 1,
         limit: 12,
@@ -116,9 +150,13 @@ watch(
   },
 );
 
-function toggleProfession(key) {
-  const list = filters.value.professions;
-  filters.value.professions = list.includes(key) ? list.filter((p) => p !== key) : [...list, key];
+function toggleCategory(key) {
+  const list = filters.value.categories;
+  filters.value.categories = list.includes(key) ? list.filter((c) => c !== key) : [...list, key];
+}
+
+function removeProfession(key) {
+  filters.value.professions = filters.value.professions.filter((p) => p !== key);
 }
 
 function resetFilters() {
@@ -183,6 +221,10 @@ onBeforeUnmount(() => {
             <span><MapPin /> Location</span>
             <strong :class="me.hasLocation ? 'ok' : 'off'">{{ me.hasLocation ? me.city || 'On' : 'Off' }}</strong>
           </RouterLink>
+          <RouterLink to="/settings#profile" class="mini__stat">
+            <span><BadgeIndianRupee /> My rate</span>
+            <strong :class="myRate ? 'ok' : 'off'">{{ myRate || 'Not set' }}</strong>
+          </RouterLink>
         </div>
       </UiCard>
 
@@ -201,7 +243,7 @@ onBeforeUnmount(() => {
     <section class="discover__main">
       <header class="hero">
         <p class="muted hero__greet">{{ greeting }}, {{ me.name.split(' ')[0] }} 👋</p>
-        <h1 class="page-title">Discover professionals</h1>
+        <h1 class="page-title">Discover people &amp; services</h1>
       </header>
 
       <div class="searchbar">
@@ -210,7 +252,7 @@ onBeforeUnmount(() => {
           <input
             v-model.trim="filters.q"
             type="search"
-            placeholder="Search by name, role, skill or city"
+            placeholder="Search by name, profession, skill or city"
             aria-label="Search people"
             enterkeyhint="search"
           />
@@ -225,19 +267,48 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div class="scroll-x chips" role="group" aria-label="Filter by profession">
-        <UiChip :active="!filters.professions.length" @click="filters.professions = []">All</UiChip>
+      <div class="scroll-x chips" role="group" aria-label="Filter by category">
+        <UiChip :active="!filters.categories.length" @click="filters.categories = []">All</UiChip>
         <UiChip
-          v-for="p in PROFESSIONS"
-          :key="p.key"
-          :icon="p.icon"
-          :hue="p.hue"
-          :active="filters.professions.includes(p.key)"
-          @click="toggleProfession(p.key)"
+          v-for="c in professions.categories"
+          :key="c.key"
+          :icon="c.icon"
+          :hue="c.hue"
+          :active="filters.categories.includes(c.key)"
+          @click="toggleCategory(c.key)"
         >
-          {{ p.label }}
+          {{ c.label }}
         </UiChip>
       </div>
+
+      <div v-if="pickedProfessions.length || filters.maxRate != null || filters.availableOnly" class="active-filters">
+        <button
+          v-for="p in pickedProfessions"
+          :key="p.key"
+          type="button"
+          class="active-filter"
+          :style="{ '--hue': p.hue }"
+          :aria-label="`Remove ${p.label} filter`"
+          @click="removeProfession(p.key)"
+        >
+          <component :is="p.icon" /> {{ p.label }} <X class="active-filter__x" />
+        </button>
+        <button v-if="filters.availableOnly" type="button" class="active-filter" @click="filters.availableOnly = false">
+          Available for work <X class="active-filter__x" />
+        </button>
+        <button v-if="filters.maxRate != null" type="button" class="active-filter" @click="filters.maxRate = null">
+          Up to {{ formatMoney(filters.maxRate) }} <X class="active-filter__x" />
+        </button>
+      </div>
+
+      <RouterLink v-if="profileIncomplete" to="/welcome" class="setup-banner">
+        <span class="setup-banner__icon"><Sparkles /></span>
+        <div class="grow">
+          <strong>Finish setting up your profile</strong>
+          <p>Add your profession, rate and photo so people can find and hire you.</p>
+        </div>
+        <span class="setup-banner__go">Continue <ArrowRight /></span>
+      </RouterLink>
 
       <Transition name="fade">
         <div v-if="!me.hasLocation" class="locate-banner">
@@ -253,7 +324,7 @@ onBeforeUnmount(() => {
       <div class="results-head">
         <p v-if="!loading" class="muted">
           <strong class="results-count">{{ total }}</strong>
-          {{ total === 1 ? 'professional' : 'professionals' }}
+          {{ total === 1 ? 'person' : 'people' }}
           <template v-if="meta.distanceApplied"> within {{ maxDistance }} km</template>
           <template v-if="filters.onlineOnly"> online now</template>
         </p>
@@ -427,6 +498,91 @@ onBeforeUnmount(() => {
   padding-bottom: 2px;
   margin-inline: calc(-1 * var(--page-pad));
   padding-inline: var(--page-pad);
+}
+
+.setup-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  background: linear-gradient(120deg, var(--primary), color-mix(in srgb, var(--primary) 50%, var(--accent)));
+  box-shadow: 0 14px 30px -18px color-mix(in srgb, var(--primary) 80%, transparent);
+  transition: transform 0.2s var(--ease);
+}
+.setup-banner:hover {
+  transform: translateY(-2px);
+}
+.setup-banner p {
+  font-size: 0.86rem;
+  opacity: 0.85;
+}
+.setup-banner__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.setup-banner__icon svg {
+  width: 22px;
+  height: 22px;
+}
+.setup-banner__go {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 99px;
+  background: #fff;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+.setup-banner__go svg {
+  width: 16px;
+  height: 16px;
+}
+@media (max-width: 479px) {
+  .setup-banner__go {
+    display: none;
+  }
+}
+.active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.active-filter {
+  --hue: 243;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  border-radius: 99px;
+  border: 1px solid hsl(var(--hue) 60% 55% / 0.4);
+  background: hsl(var(--hue) 85% 55% / 0.1);
+  color: hsl(var(--hue) 60% 38%);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+[data-theme='dark'] .active-filter {
+  color: hsl(var(--hue) 85% 78%);
+}
+.active-filter svg {
+  width: 15px;
+  height: 15px;
+}
+.active-filter__x {
+  opacity: 0.6;
+}
+.active-filter:hover .active-filter__x {
+  opacity: 1;
 }
 
 .locate-banner {

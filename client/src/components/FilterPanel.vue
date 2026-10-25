@@ -1,11 +1,12 @@
 <script setup>
 import { computed } from 'vue';
-import { LocateFixed, Radar, Wifi, ArrowDownUp } from 'lucide-vue-next';
+import { LocateFixed, Radar, Wifi, ArrowDownUp, BriefcaseBusiness } from 'lucide-vue-next';
 import UiRange from './ui/UiRange.vue';
 import UiToggle from './ui/UiToggle.vue';
 import UiSelect from './ui/UiSelect.vue';
 import UiButton from './ui/UiButton.vue';
-import { DISTANCE_STEPS } from '@/constants/filters';
+import { DISTANCE_STEPS, RATE_STEPS } from '@/constants/filters';
+import { formatMoney } from '@/utils/format';
 
 const filters = defineModel({ type: Object, required: true });
 defineProps({
@@ -20,7 +21,19 @@ const sortOptions = [
   { value: 'distance', label: 'Nearest first' },
   { value: 'newest', label: 'Newest members' },
   { value: 'connections', label: 'Most connected' },
+  { value: 'rate', label: 'Lowest rate first' },
 ];
+
+const rateOptions = RATE_STEPS.map((v) => ({ value: v ?? '', label: v == null ? 'Any rate' : `Up to ${formatMoney(v)}` }));
+
+const availableOnly = computed({
+  get: () => filters.value.availableOnly,
+  set: (v) => (filters.value = { ...filters.value, availableOnly: v }),
+});
+const maxRate = computed({
+  get: () => filters.value.maxRate ?? '',
+  set: (v) => (filters.value = { ...filters.value, maxRate: v === '' ? null : Number(v) }),
+});
 
 const distanceIdx = computed({
   get: () => filters.value.distanceIdx,
@@ -60,6 +73,12 @@ const formatDistance = (i) => (DISTANCE_STEPS[i] == null ? 'Any distance' : `Wit
         </UiButton>
         <p v-if="locationError" class="filters__error">{{ locationError }}</p>
       </div>
+    </section>
+
+    <section class="filters__section">
+      <h3 class="filters__title"><BriefcaseBusiness /> Hiring</h3>
+      <UiToggle v-model="availableOnly" label="Available for work" description="People open to new jobs and bookings" />
+      <UiSelect v-model="maxRate" :options="rateOptions" label="Maximum rate" aria-label="Maximum rate" />
     </section>
 
     <section class="filters__section">

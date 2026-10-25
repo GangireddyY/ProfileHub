@@ -4,6 +4,7 @@ import { io } from 'socket.io-client';
 import { toast } from '@/composables/useToast';
 import { useAuthStore } from './auth';
 import { useChatStore } from './chat';
+import { useProfessionsStore } from './professions';
 
 export const useRealtimeStore = defineStore('realtime', () => {
   const socket = shallowRef(null);
@@ -65,7 +66,27 @@ export const useRealtimeStore = defineStore('realtime', () => {
         action: { label: 'Message', to: `/messages/${user.id}` },
       });
     });
-    s.on('notification:new', () => auth.adjustCount('unreadNotifications', 1));
+    s.on('notification:new', ({ notification } = {}) => {
+      auth.adjustCount('unreadNotifications', 1);
+      const actor = notification?.actor;
+      if (notification?.type === 'profession_approved') {
+        // The admin may have just set our profession; refresh both the catalog and our profile.
+        useProfessionsStore().refresh().catch(() => {});
+        auth.fetchMe().catch(() => {});
+        toast.success('Your profession request was approved and added to the list.', {
+          title: 'Request approved',
+          action: { label: 'View', to: '/notifications' },
+        });
+      } else if (notification?.type === 'profession_rejected') {
+        toast.info('An admin reviewed your profession request.', { title: 'Request reviewed', action: { label: 'View', to: '/notifications' } });
+      } else if (notification?.type === 'profession_request' && actor) {
+        toast.info(`${actor.name} asked for a new profession`, {
+          title: 'New profession request',
+          avatar: actor,
+          action: { label: 'Review', to: '/admin' },
+        });
+      }
+    });
 
     s.on('network:changed', () => {
       networkVersion.value++;

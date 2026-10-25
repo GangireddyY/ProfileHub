@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { Bell, BellRing, UserPlus, UserCheck, CheckCheck } from 'lucide-vue-next';
+import { Bell, BellRing, UserPlus, UserCheck, CheckCheck, BriefcaseBusiness, CircleCheck, CircleX } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -25,10 +25,20 @@ const loadingMore = ref(false);
 const filter = ref('all');
 
 const TEXT = {
-  connection_request: 'wants to join your network',
-  connection_accepted: 'accepted your invitation. Say hello!',
+  connection_request: () => 'wants to join your network',
+  connection_accepted: () => 'accepted your invitation. Say hello!',
+  profession_request: (m) => `asked to add “${m?.label ?? 'a profession'}” to the profession list`,
+  profession_approved: (m) => `approved your request. “${m?.professionLabel ?? m?.label}” is now in the profession list`,
+  profession_rejected: (m) => `declined your request for “${m?.label ?? 'a profession'}”`,
 };
-const ICON = { connection_request: UserPlus, connection_accepted: UserCheck };
+const ICON = {
+  connection_request: UserPlus,
+  connection_accepted: UserCheck,
+  profession_request: BriefcaseBusiness,
+  profession_approved: CircleCheck,
+  profession_rejected: CircleX,
+};
+const isProfession = (n) => n.type.startsWith('profession_');
 
 const filters = computed(() => [
   { key: 'all', label: 'All', icon: BellRing, count: items.value.length },
@@ -44,9 +54,19 @@ const filters = computed(() => [
     icon: UserCheck,
     count: items.value.filter((n) => n.type === 'connection_accepted').length,
   },
+  {
+    key: 'profession',
+    label: 'Professions',
+    icon: BriefcaseBusiness,
+    count: items.value.filter(isProfession).length,
+  },
 ]);
 const mobileTabs = computed(() => filters.value.map(({ key, label }) => ({ key, label })));
-const visible = computed(() => (filter.value === 'all' ? items.value : items.value.filter((n) => n.type === filter.value)));
+const visible = computed(() => {
+  if (filter.value === 'all') return items.value;
+  if (filter.value === 'profession') return items.value.filter(isProfession);
+  return items.value.filter((n) => n.type === filter.value);
+});
 
 async function markAllRead() {
   if (!auth.user?.unreadNotifications) return;
@@ -148,7 +168,7 @@ watch(
           v-else-if="!visible.length"
           :icon="Bell"
           :title="items.length ? 'Nothing in this filter' : 'You\'re all caught up'"
-          description="When someone invites you or accepts your invitation, it will show up here."
+          description="Invitations, accepted requests and profession updates will show up here."
         >
           <UiButton to="/" variant="soft">Discover people</UiButton>
         </UiEmpty>
@@ -163,8 +183,9 @@ watch(
             <div class="item__body">
               <p class="item__text">
                 <RouterLink :to="`/u/${n.actor.id}`" class="item__name">{{ n.actor.name }}</RouterLink>
-                {{ TEXT[n.type] }}
+                {{ TEXT[n.type]?.(n.meta) }}
               </p>
+              <p v-if="n.type === 'profession_rejected' && n.meta?.reviewNote" class="item__note">“{{ n.meta.reviewNote }}”</p>
               <div class="row wrap item__meta" style="--gap: 8px">
                 <ProfessionBadge :profession="n.actor.profession" size="sm" />
                 <span class="subtle">{{ timeAgo(n.createdAt) }}</span>
@@ -172,8 +193,22 @@ watch(
             </div>
 
             <div class="item__actions">
+              <template v-if="isProfession(n)">
+                <UiButton
+                  v-if="n.type === 'profession_request'"
+                  size="sm"
+                  :variant="n.meta?.status === 'pending' ? 'primary' : 'ghost'"
+                  to="/admin"
+                >
+                  {{ n.meta?.status === 'pending' ? 'Review' : 'Reviewed' }}
+                </UiButton>
+                <UiButton v-else-if="n.type === 'profession_approved'" size="sm" variant="soft" to="/settings#profile">
+                  View profile
+                </UiButton>
+                <UiButton v-else size="sm" variant="ghost" to="/settings#profile">Pick another</UiButton>
+              </template>
               <ConnectButton
-                v-if="n.type === 'connection_request' && n.actor.connectionStatus !== 'none'"
+                v-else-if="n.type === 'connection_request' && n.actor.connectionStatus !== 'none'"
                 :user="n.actor"
                 size="sm"
                 @change="onStatusChange(n, $event)"
@@ -302,8 +337,21 @@ watch(
 .item__type--connection_request {
   background: var(--primary);
 }
-.item__type--connection_accepted {
+.item__type--connection_accepted,
+.item__type--profession_approved {
   background: var(--success);
+}
+.item__type--profession_request {
+  background: var(--warning);
+}
+.item__type--profession_rejected {
+  background: var(--danger);
+}
+.item__note {
+  margin-top: 4px;
+  font-size: 0.86rem;
+  color: var(--text-2);
+  font-style: italic;
 }
 .item__body {
   flex: 1;

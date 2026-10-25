@@ -1,7 +1,14 @@
 import { DataTypes, Model } from 'sequelize';
 import { sequelize } from '../config/db.js';
 
-export const NOTIFICATION_TYPES = ['connection_request', 'connection_accepted'];
+export const NOTIFICATION_TYPES = [
+  'connection_request',
+  'connection_accepted',
+  /** Sent to admins; entityId is the profession request. */
+  'profession_request',
+  'profession_approved',
+  'profession_rejected',
+];
 
 export class Notification extends Model {}
 

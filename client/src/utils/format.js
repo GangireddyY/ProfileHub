@@ -54,6 +54,25 @@ export function formatDistance(km) {
   return `${Math.round(km)} km away`;
 }
 
+const moneyFormats = new Map();
+export function formatMoney(amount, currency = 'INR') {
+  if (amount == null) return '';
+  if (!moneyFormats.has(currency)) {
+    moneyFormats.set(
+      currency,
+      new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : undefined, { style: 'currency', currency, maximumFractionDigits: 0 }),
+    );
+  }
+  return moneyFormats.get(currency).format(amount);
+}
+
+const RATE_SHORT = { hour: 'hr', day: 'day', job: 'job', month: 'month' };
+/** '₹350/hr' for a member's rate, or '' when they haven't set one. */
+export function formatRate(user) {
+  if (!user?.rateAmount) return '';
+  return `${formatMoney(user.rateAmount, user.currency)}/${RATE_SHORT[user.rateUnit] || user.rateUnit}`;
+}
+
 export function formatCount(n) {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return String(n ?? 0);

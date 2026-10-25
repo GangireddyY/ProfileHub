@@ -1,6 +1,6 @@
 # ProfileHUB
 
-A LinkedIn-style professional network with **location-based discovery**, **connection requests** and **realtime chat**.
+A professional network and local marketplace with **location-based discovery**, **150+ professions** (from software developers to drivers, electricians and daily wage workers), **hourly/daily rates**, **buy & sell listings**, **connection requests** and **realtime chat**.
 
 ## Stack
 
@@ -21,21 +21,27 @@ npm run dev              # API on :4000, web app on :5173
 ```
 
 Sign in with **demo@profilehub.dev / password123** (every seeded account uses `password123`).
+The seeded admin is **admin@profilehub.dev**. To make your own account an admin, add its email to `ADMIN_EMAILS` in `server/.env` and restart the server.
 
 To try it on a phone on the same Wi-Fi, run `npm run dev:host` and open the `https://…` "Network" URL Vite prints.
 It uses a self-signed certificate (accept the browser warning once) because phones only allow location access over HTTPS.
 
 ## Features
 
-- **Auth**: signup (2 steps with a profession picker) and login, JWT sessions, rate-limited auth routes.
-- **Profiles**: role/title, profession category (Software, Doctor, Healthcare, Education, Design, Engineering, Legal, Finance, Marketing, Founder, Student, Creative, Other). Each category has its own colour and icon on badges, cards and profile covers. Also bio, skills, city, and an experience and education timeline you can add to, edit and delete.
+- **Auth**: signup (2 steps with a searchable profession picker) and login, JWT sessions, rate-limited auth routes.
+- **Professions**: a catalog of 150+ professions in 17 categories (technology, healthcare, skilled trades, construction & labour, driving & transport, machine operators, home services, hospitality, farming, retail, security…), stored in the database. Each has its own colour and icon on badges, cards and profile covers. If a profession is missing, members can request it (at signup or in settings); admins approve or decline requests, and approving also resolves duplicate requests and notifies everyone who asked.
+- **Rates & availability**: members set a rate per hour, day, job or month (INR, USD, EUR, GBP, AED) and an "available for work" flag. Both show on cards and profiles and can be filtered and sorted in Discover.
+- **Marketplace**: sell vehicles, bikes, phones, electronics, furniture, appliances, books and more. Up to 8 photos per listing (re-encoded to WebP), condition, negotiable price, distance from you, mark as sold, hide or delete. Buyers can message a seller without being connected first.
+- **Search**: one search box for people, professions and listings ("driver" finds every kind of driver, "bike" finds bikes and scooters).
+- **Admin panel** (`/admin`): stats, profession requests with demand counts, and a catalog editor (add, rename, recategorise, change icon and colour, hide).
+- **Profiles**: role/title, profession, rate, bio, skills, city, items for sale, and an experience and education timeline you can add to, edit and delete.
 - **Profile photos**: upload JPG/PNG/WebP/GIF/AVIF up to 5 MB. The server crops and re-encodes every upload to a 400×400 WebP with `sharp`, and deletes the old file when you replace or remove it.
 - **Network**: send, accept, ignore, withdraw and remove connections. Connection count and mutual connections show on profiles. Invitations arrive in realtime with toasts and badges.
 - **Notifications**: bell with unread badge. Invitations can be accepted right from the list, and "accepted" notices link to chat.
 - **Account security**: change password (this signs out every other device and socket) and delete your account after confirming your password. Both routes are rate limited.
 - **Discover filters**: search (name, role, skill, city), profession chips, distance radius (1 km up to any distance; bounding-box pre-filter plus haversine), online-now, and sort (recommended, nearest, newest, most connected). Infinite scroll.
 - **Settings**: opt-in location sharing via the browser Geolocation API (turning it off deletes the coordinates), default discovery radius, show/hide online status, hide from Discover, and light/dark/system theme.
-- **Chat (Socket.IO)**: messaging between connections only, live presence, typing indicator, read receipts, optimistic sending with retry, unread counts, history pagination, and sync across tabs and devices.
+- **Chat (Socket.IO)**: messaging between connections (or with sellers who have an active listing), live presence, typing indicator, read receipts, optimistic sending with retry, unread counts, history pagination, and sync across tabs and devices.
 - **Privacy**: other members never receive exact coordinates, only a rounded distance.
 
 ## Project layout
@@ -44,16 +50,16 @@ It uses a self-signed certificate (accept the browser warning once) because phon
 server/src
   config/        env + Sequelize connection
   db/            Umzug migrator + migrations/
-  models/        User, Connection, Message, Experience, Notification (+ associations)
-  routes/        auth, users, account (photo/password/delete/experiences), connections, messages, notifications
-  services/      relationships, messages, notifications, avatars, experiences
+  models/        User, Connection, Message, Experience, Notification, Profession, ProfessionRequest, Listing
+  routes/        auth, users, account, connections, messages, notifications, professions, listings, search, admin
+  services/      relationships, messages, notifications, avatars, experiences, professions, listing images, search
   socket/        Socket.IO auth, presence, typing, emit helpers
   seed.js        demo data
 client/src
   components/ui      UiButton, UiInput, UiToggle, UiRange, UiSheet, UiTabs, UiAvatar, ...
   components/        ProfileCard, ConnectButton, FilterPanel, ProfessionPicker, chat/*, profile/*
   stores/            auth, realtime (socket + presence), chat, theme
-  views/             Discover, Profile, Network, Messages, Notifications, Settings, Login, Signup
+  views/             Discover, Search, Market, Listing, ListingEditor, Profile, Network, Messages, Notifications, Settings, Admin, Login, Signup
 ```
 
 ## Database migrations
