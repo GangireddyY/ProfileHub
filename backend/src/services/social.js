@@ -1,5 +1,7 @@
 import { Op } from 'sequelize';
-import { Connection, Message, Notification } from '../models/index.js';
+import { Connection, Message, Notification, Plan } from '../models/index.js';
+import { downgradeExpiredPlans } from './plans.js';
+import { limitsByPlan, limitsFrom, limitsFor } from './entitlements.js';
 import { distanceBetween } from '../utils/geo.js';
 
 /** Relationship of `viewerId` towards another member, from the viewer's point of view. */
@@ -92,9 +94,14 @@ export async function getStatus(viewerId, otherId) {
 /** Decorate a list of users with relationship info relative to the viewer. */
 export async function decorateUsers(viewer, users) {
   const ids = users.map((u) => u.id);
-  const [counts, statuses] = await Promise.all([getConnectionCounts(ids), getStatusMap(viewer.id, ids)]);
+  const [counts, statuses, planLimits] = await Promise.all([
+    getConnectionCounts(ids),
+    getStatusMap(viewer.id, ids),
+    limitsByPlan(),
+  ]);
   return users.map((u) => ({
     ...u.toPublic(),
+    verified: limitsFrom(planLimits, u).verifiedBadge,
     distanceKm: distanceBetween(viewer, u),
     connectionCount: counts.get(u.id) || 0,
     connectionStatus: statuses.get(u.id)?.status || STATUS.NONE,
@@ -103,14 +110,22 @@ export async function decorateUsers(viewer, users) {
 }
 
 export async function buildSelf(user) {
-  const [counts, pendingRequests, unreadMessages, unreadNotifications] = await Promise.all([
+  if (user.planExpiresAt && new Date(user.planExpiresAt) < new Date()) {
+    await downgradeExpiredPlans();
+    await user.reload();
+  }
+  const [counts, pendingRequests, unreadMessages, unreadNotifications, plan] = await Promise.all([
     getConnectionCounts([user.id]),
     Connection.count({ where: { addresseeId: user.id, status: 'pending' } }),
     Message.count({ where: { receiverId: user.id, readAt: null } }),
     Notification.count({ where: { userId: user.id, readAt: null } }),
+    user.planId ? Plan.findByPk(user.planId) : null,
   ]);
   return {
     ...user.toSelf(),
+    plan: plan?.toPublic() ?? null,
+    /** What this member's plan unlocks right now (admins are never limited). */
+    limits: await limitsFor(user),
     connectionCount: counts.get(user.id) || 0,
     pendingRequests,
     unreadMessages,

@@ -3,6 +3,7 @@ import { env } from './config/env.js';
 import { initDb } from './models/index.js';
 import { createApp } from './app.js';
 import { initSocket, resetPresence } from './socket/index.js';
+import { downgradeExpiredPlans } from './services/plans.js';
 
 async function main() {
   await initDb();
@@ -14,6 +15,9 @@ async function main() {
   server.listen(env.port, () => {
     console.log(`ProfileHUB API listening on http://localhost:${env.port}`);
   });
+
+  const HOUR = 60 * 60 * 1000;
+  setInterval(() => downgradeExpiredPlans().catch((err) => console.error('Plan expiry check failed:', err)), HOUR).unref();
 
   // Sockets and keep-alive connections never close on their own, so a plain server.close()
   // can hang and keep the port busy, which breaks watch-mode restarts.

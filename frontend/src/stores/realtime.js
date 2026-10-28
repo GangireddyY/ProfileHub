@@ -41,7 +41,8 @@ export const useRealtimeStore = defineStore('realtime', () => {
     s.on('connect_error', (err) => {
       if (!isCurrent()) return;
       connected.value = false;
-      if (err.message === 'Unauthorized') window.dispatchEvent(new CustomEvent('auth:expired'));
+      // Ask the API why: its 401 carries the reason (expired, password changed, suspended) and signs us out.
+      if (err.message === 'Unauthorized') useAuthStore().fetchMe().catch(() => {});
     });
 
     s.on('presence', (p) => {
@@ -80,6 +81,20 @@ export const useRealtimeStore = defineStore('realtime', () => {
         });
       } else if (notification?.type === 'profession_rejected') {
         toast.info('An admin reviewed your profession request.', { title: 'Request reviewed', action: { label: 'View', to: '/notifications' } });
+      } else if (notification?.type === 'plan_approved') {
+        auth.fetchMe().catch(() => {});
+        toast.success('An admin approved your plan request. Your new plan is active.', {
+          title: 'Plan upgraded',
+          action: { label: 'View plans', to: '/plans' },
+        });
+      } else if (notification?.type === 'plan_rejected') {
+        toast.info('An admin reviewed your plan request.', { title: 'Plan request reviewed', action: { label: 'View', to: '/plans' } });
+      } else if (notification?.type === 'plan_request' && actor) {
+        toast.info(`${actor.name} asked for a plan upgrade`, {
+          title: 'New plan request',
+          avatar: actor,
+          action: { label: 'Review', to: '/admin?tab=plan-requests' },
+        });
       } else if (notification?.type === 'profession_request' && actor) {
         toast.info(`${actor.name} asked for a new profession`, {
           title: 'New profession request',

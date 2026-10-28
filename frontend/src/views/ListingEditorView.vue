@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
 import { ImagePlus, X, Star, Send, Save, Camera, PackageX } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
@@ -17,6 +17,8 @@ import UiButton from '@/components/ui/UiButton.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSpinner from '@/components/ui/UiSpinner.vue';
 import BackButton from '@/components/BackButton.vue';
+import LocationPicker from '@/components/LocationPicker.vue';
+import { shortPlaceLabel } from '@/composables/useGeolocation';
 
 const props = defineProps({ id: { type: String, default: '' } });
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -36,6 +38,23 @@ const form = reactive({
   city: auth.user?.city || '',
   description: '',
 });
+/** Where the item is: { latitude, longitude, label }. New listings start at the member's shared location. */
+const me = auth.user;
+const myCenter = me?.latitude != null ? { latitude: me.latitude, longitude: me.longitude } : null;
+const spot = ref(
+  !isEdit.value && myCenter
+    ? { ...myCenter, label: me.locationDetails ? shortPlaceLabel(me.locationDetails) || me.city : me.city }
+    : null,
+);
+if (spot.value?.label) form.city = spot.value.label;
+// Moving the pin renames the area, unless it was just loaded with the listing.
+watch(
+  () => spot.value?.label,
+  (label, previous) => {
+    if (label && previous !== undefined && label !== previous) form.city = label.slice(0, 100);
+  },
+);
+
 /** Unified photo list: { key, url, file? } — `file` marks a new upload not yet on the server. */
 const photos = ref([]);
 const errors = ref({});
@@ -47,6 +66,8 @@ const loadError = ref('');
 const fileInput = ref(null);
 const dragging = ref(false);
 
+/** The member's plan decides how many photos a listing may have. */
+const maxPhotos = computed(() => auth.user?.limits?.maxListingPhotos ?? MAX_LISTING_IMAGES);
 const pricePreview = computed(() => (form.price === '' ? '' : formatMoney(Number(form.price) || 0, form.currency)));
 const selectedCategory = computed(() => (form.category ? getListingCategory(form.category) : null));
 
@@ -68,6 +89,7 @@ async function loadListing() {
       city: l.city,
       description: l.description,
     });
+    spot.value = l.latitude != null ? { latitude: l.latitude, longitude: l.longitude, label: l.city } : null;
     photos.value = l.images.map((url) => ({ key: url, url }));
   } catch (err) {
     loadError.value = errorMessage(err);
@@ -79,8 +101,10 @@ if (isEdit.value) loadListing();
 
 function addFiles(fileList) {
   const files = [...fileList];
-  const room = MAX_LISTING_IMAGES - photos.value.length;
-  if (files.length > room) toast.info(`You can add up to ${MAX_LISTING_IMAGES} photos`);
+  const room = maxPhotos.value - photos.value.length;
+  if (files.length > room) {
+    toast.info(`Your plan allows up to ${maxPhotos.value} photos per listing`, { action: { label: 'View plans', to: '/plans' } });
+  }
   for (const file of files.slice(0, Math.max(0, room))) {
     if (!TYPES.includes(file.type)) {
       toast.error(`${file.name} is not a supported image`);
@@ -131,6 +155,10 @@ async function submit() {
   }
   const body = new FormData();
   for (const [k, v] of Object.entries(form)) body.append(k, typeof v === 'string' ? v.trim() : String(v));
+  if (spot.value) {
+    body.append('latitude', String(spot.value.latitude));
+    body.append('longitude', String(spot.value.longitude));
+  }
 
   const newFiles = photos.value.filter((p) => p.file);
   newFiles.forEach((p) => body.append('images', p.file));
@@ -189,7 +217,7 @@ onBeforeUnmount(() => photos.value.forEach((p) => p.file && URL.revokeObjectURL(
         <UiCard>
           <header class="card-head">
             <h2 class="section-title">Photos</h2>
-            <span class="subtle">{{ photos.length }}/{{ MAX_LISTING_IMAGES }} · first photo is the cover</span>
+            <span class="subtle">{{ photos.length }}/{{ maxPhotos }} · first photo is the cover</span>
           </header>
           <div
             class="photos"
@@ -208,7 +236,7 @@ onBeforeUnmount(() => photos.value.forEach((p) => p.file && URL.revokeObjectURL(
                 </div>
               </div>
             </TransitionGroup>
-            <button v-if="photos.length < MAX_LISTING_IMAGES" type="button" class="photo photo--add" @click="fileInput.click()">
+            <button v-if="photos.length < maxPhotos" type="button" class="photo photo--add" @click="fileInput.click()">
               <ImagePlus />
               <span>{{ photos.length ? 'Add more' : 'Add photos' }}</span>
               <small>or drag &amp; drop</small>
@@ -288,10 +316,19 @@ onBeforeUnmount(() => photos.value.forEach((p) => p.file && URL.revokeObjectURL(
             />
           </div>
           <UiToggle v-model="form.negotiable" label="Open to offers" description="Show buyers the price is negotiable" />
-          <UiInput v-model="form.city" label="City / area" maxlength="100" placeholder="e.g. Indiranagar, Bengaluru" :error="errors.city" />
-          <p class="subtle small">
-            If you share your location, buyers see how far away the item is. Your exact location is never shown.
-          </p>
+        </UiCard>
+
+        <UiCard class="stack" style="--gap: 14px">
+          <h2 class="section-title">Location</h2>
+          <LocationPicker v-model="spot" :fallback-center="myCenter" />
+          <UiInput
+            v-model="form.city"
+            label="Area shown to buyers"
+            maxlength="100"
+            placeholder="e.g. Indiranagar, Bengaluru"
+            hint="Filled in from the pin; you can tidy it up"
+            :error="errors.city || errors.latitude"
+          />
         </UiCard>
 
         <UiCard class="preview" :style="{ '--hue': selectedCategory?.hue ?? 220 }">

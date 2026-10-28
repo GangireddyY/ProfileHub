@@ -8,6 +8,10 @@ export const NOTIFICATION_TYPES = [
   'profession_request',
   'profession_approved',
   'profession_rejected',
+  /** Sent to admins; entityId is the plan request. */
+  'plan_request',
+  'plan_approved',
+  'plan_rejected',
 ];
 
 export class Notification extends Model {}

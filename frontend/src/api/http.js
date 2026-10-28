@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { toast } from '@/composables/useToast';
 
 const TOKEN_KEY = 'ph_token';
 
@@ -41,7 +42,12 @@ api.interceptors.response.use(
   (error) => {
     const isAuthCall = error.config?.url?.startsWith('/auth/login') || error.config?.url?.startsWith('/auth/signup');
     if (error.response?.status === 401 && !isAuthCall) {
-      window.dispatchEvent(new CustomEvent('auth:expired'));
+      window.dispatchEvent(new CustomEvent('auth:expired', { detail: { message: error.response.data?.message } }));
+    }
+    // Anything blocked by the member's plan gets one toast with a way to upgrade; the page's own
+    // toast with the same message is then skipped as a duplicate.
+    if (error.response?.status === 403 && error.response.data?.details?.code === 'plan_limit') {
+      toast.error(error.response.data.message, { action: { label: 'View plans', to: '/plans' } });
     }
     return Promise.reject(error);
   },

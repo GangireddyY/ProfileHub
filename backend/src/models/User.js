@@ -99,6 +99,11 @@ User.init(
 
     isOnline: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     lastSeenAt: { type: DataTypes.DATE, allowNull: true },
+
+    planId: { type: DataTypes.UUID, allowNull: true },
+    planExpiresAt: { type: DataTypes.DATE, allowNull: true },
+    /** Set by an admin; suspended accounts cannot sign in and are hidden from Discover and search. */
+    suspendedAt: { type: DataTypes.DATE, allowNull: true },
   },
   {
     sequelize,

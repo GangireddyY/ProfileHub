@@ -9,6 +9,7 @@ import { buildSelf, decorateUsers, getConnectionIds, getConnectionCounts } from 
 import { listExperiences } from '../services/experiences.js';
 import { assertProfession, activeProfessions, professionKeysInCategories } from '../services/professions.js';
 import { userSearchClause } from '../services/search.js';
+import { limitsFor, limitsByPlan, limitsFrom } from '../services/entitlements.js';
 import { boundingBox, distanceBetween } from '../utils/geo.js';
 import { validate, notFound } from '../utils/http.js';
 
@@ -38,7 +39,7 @@ const discoverSchema = z.object({
 
 const idSchema = z.uuid('Invalid profile id');
 
-const profileSchema = z
+export const profileSchema = z
   .object({
     name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80),
     headline: z.string().trim().max(160),
@@ -98,6 +99,9 @@ const locationSchema = z.object({
     .optional(),
 });
 
+/** Extra "Recommended" score for plans with priority placement: about one profession match. */
+const PRIORITY_BOOST = 3;
+
 function recommendationScore(me, user, distanceKm, categoryOf) {
   let score = 0;
   if (user.profession === me.profession) score += 3;
@@ -114,7 +118,7 @@ router.get('/discover', async (req, res) => {
   const me = req.user;
   const f = validate(discoverSchema, req.query);
 
-  const where = { id: { [Op.ne]: me.id }, discoverable: true };
+  const where = { id: { [Op.ne]: me.id }, discoverable: true, suspendedAt: null };
   const and = [];
   // Picked professions and categories widen each other (OR), like any multi-select filter.
   if (f.professions.length || f.categories.length) {
@@ -153,8 +157,12 @@ router.get('/discover', async (req, res) => {
   } else if (f.sort === 'rate') {
     rows.sort((a, b) => (a.user.rateAmount ?? Infinity) - (b.user.rateAmount ?? Infinity));
   } else if (f.sort === 'recommended') {
-    const categoryOf = new Map((await activeProfessions()).map((p) => [p.key, p.category]));
-    for (const r of rows) r.score = recommendationScore(me, r.user, r.distanceKm, categoryOf);
+    const [professionList, planLimits] = await Promise.all([activeProfessions(), limitsByPlan()]);
+    const categoryOf = new Map(professionList.map((p) => [p.key, p.category]));
+    for (const r of rows) {
+      r.score = recommendationScore(me, r.user, r.distanceKm, categoryOf);
+      if (limitsFrom(planLimits, r.user).priorityInDiscover) r.score += PRIORITY_BOOST;
+    }
     rows.sort((a, b) => b.score - a.score);
   }
 
@@ -228,7 +236,7 @@ router.get('/:id', async (req, res) => {
   }
 
   const user = await User.findByPk(id);
-  if (!user) throw notFound('This profile does not exist');
+  if (!user || (user.suspendedAt && !me.isAdmin)) throw notFound('This profile does not exist');
 
   const [[decorated], myIds, theirIds, experiences, listings] = await Promise.all([
     decorateUsers(me, [user]),
@@ -246,7 +254,8 @@ router.get('/:id', async (req, res) => {
       }))
     : [];
 
-  const contact = decorated.connectionStatus === 'connected' ? user.toContact() : null;
+  const shareContact = decorated.connectionStatus === 'connected' || (await limitsFor(user)).showContactPublicly || me.isAdmin;
+  const contact = shareContact ? user.toContact() : null;
   res.json({
     user: { ...decorated, isMe: false, contact, mutualCount: mutualIds.length, mutualPreview, experiences, ...listings },
   });

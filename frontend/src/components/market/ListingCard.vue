@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { MapPin, Navigation, Images } from 'lucide-vue-next';
+import { MapPin, Navigation, Images, Sparkles } from 'lucide-vue-next';
 import { getListingCategory, conditionLabel } from '@/constants/marketplace';
 import { formatMoney, formatDistance, timeAgo } from '@/utils/format';
 
@@ -22,6 +22,7 @@ const cover = computed(() => props.listing.images?.[0] || '');
       </div>
       <span v-if="listing.images?.length > 1" class="lcard__count"><Images /> {{ listing.images.length }}</span>
       <span v-if="listing.status !== 'active'" class="lcard__status">{{ listing.status === 'sold' ? 'Sold' : 'Hidden' }}</span>
+      <span v-else-if="listing.featured" class="lcard__featured"><Sparkles /> Featured</span>
     </div>
     <div class="lcard__body">
       <div class="lcard__price">
@@ -120,6 +121,27 @@ const cover = computed(() => props.listing.images?.[0] || '');
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+.lcard__featured {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  box-shadow: 0 6px 14px -6px rgba(249, 115, 22, 0.7);
+}
+.lcard__featured svg {
+  width: 12px;
+  height: 12px;
 }
 .lcard__body {
   display: flex;

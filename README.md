@@ -21,7 +21,8 @@ npm run dev              # API on :4000, web app on :5173
 ```
 
 Sign in with **demo@profilehub.dev / password123** (every seeded account uses `password123`).
-The seeded admin is **admin@profilehub.dev**. To make your own account an admin, add its email to `ADMIN_EMAILS` in `backend/.env` and restart the server.
+The admin account comes from `ADMIN_EMAIL`, `ADMIN_PASSWORD` and `ADMIN_NAME` in `backend/.env` and is created on startup.
+`npm run seed` keeps existing admin accounts and prints every login to try. To make another account an admin, add its email to `ADMIN_EMAILS` and restart the server. The password is only used for that first creation, so change it afterwards in Settings. In the admin panel, admins can manage every account (edit, change role, suspend, delete) and create membership plans to assign to members.
 
 To try it on a phone on the same Wi-Fi, run `npm run dev:host` and open the `https://…` "Network" URL Vite prints.
 It uses a self-signed certificate (accept the browser warning once) because phones only allow location access over HTTPS.

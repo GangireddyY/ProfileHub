@@ -45,14 +45,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
       </div>
 
       <div class="hero__inner">
-        <RouterLink to="/" class="brand brand--light">
-          <img src="/favicon.svg" alt="" width="38" height="38" />
-          <span>ProfileHUB</span>
-        </RouterLink>
-
         <div class="hero__center">
           <div class="hero__copy">
-            <span class="hero__eyebrow"><span class="live-dot" /> Professionals near you, live</span>
             <h1>Your professional world, <span class="gradient-text">right around the corner.</span></h1>
             <p class="hero__lead">
               Doctors, developers, electricians, drivers, teachers and 150+ more professions. Hire nearby talent, buy
@@ -120,10 +114,13 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
       <div class="auth__glow" aria-hidden="true" />
 
       <header class="auth__top">
-        <RouterLink to="/" class="brand brand--mobile">
-          <img src="/favicon.svg" alt="" width="34" height="34" />
-          <span>ProfileHUB</span>
-        </RouterLink>
+        <div class="auth__brand">
+          <RouterLink to="/" class="brand brand--top">
+            <img src="/favicon.svg" alt="" width="36" height="36" />
+            <span>ProfileHUB</span>
+          </RouterLink>
+          <span class="hero__eyebrow"><span class="live-dot" /> Professionals near you, live</span>
+        </div>
         <button
           type="button"
           class="theme-btn"
@@ -151,6 +148,51 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
 </template>
 
 <style scoped>
+/* Theme-aware colours for the showcase, so light and dark mode apply to the whole page. */
+.auth {
+  --hero-bg: #eef1fb;
+  --hero-ink: #0f172a;
+  --hero-ink-2: rgba(15, 23, 42, 0.82);
+  --hero-ink-3: rgba(15, 23, 42, 0.64);
+  --hero-ink-4: rgba(15, 23, 42, 0.5);
+  --hero-line: rgba(15, 23, 42, 0.12);
+  --hero-grid: rgba(15, 23, 42, 0.06);
+  --hero-chip: rgba(255, 255, 255, 0.75);
+  --hero-glass: rgba(255, 255, 255, 0.8);
+  --hero-glass-line: rgba(15, 23, 42, 0.08);
+  --hero-glass-shadow: 0 20px 40px -18px rgba(15, 23, 42, 0.25);
+  --hero-tile: rgba(255, 255, 255, 0.62);
+  --hero-tile-line: rgba(15, 23, 42, 0.08);
+  --hero-accent: #0e7490;
+  --hero-node-s: 70%;
+  --hero-node-l: 40%;
+  --hero-gradient: linear-gradient(92deg, #4f46e5 0%, #0891b2 50%, #c026d3 100%);
+  --hero-blob-opacity: 0.28;
+  --hero-blob-c-opacity: 0.18;
+  --hero-panel-shadow: 0 30px 80px -28px rgba(15, 23, 42, 0.3);
+}
+[data-theme='dark'] .auth {
+  --hero-bg: #070b1a;
+  --hero-ink: #fff;
+  --hero-ink-2: rgba(255, 255, 255, 0.85);
+  --hero-ink-3: rgba(255, 255, 255, 0.68);
+  --hero-ink-4: rgba(255, 255, 255, 0.52);
+  --hero-line: rgba(255, 255, 255, 0.12);
+  --hero-grid: rgba(255, 255, 255, 0.05);
+  --hero-chip: rgba(255, 255, 255, 0.06);
+  --hero-glass: rgba(255, 255, 255, 0.08);
+  --hero-glass-line: rgba(255, 255, 255, 0.14);
+  --hero-glass-shadow: 0 20px 40px -16px rgba(0, 0, 0, 0.6);
+  --hero-tile: rgba(255, 255, 255, 0.04);
+  --hero-tile-line: rgba(255, 255, 255, 0.08);
+  --hero-accent: #a5f3fc;
+  --hero-node-s: 95%;
+  --hero-node-l: 82%;
+  --hero-gradient: linear-gradient(92deg, #a5b4fc 0%, #67e8f9 50%, #f0abfc 100%);
+  --hero-blob-opacity: 0.55;
+  --hero-blob-c-opacity: 0.35;
+  --hero-panel-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.65);
+}
 .auth {
   min-height: 100dvh;
   display: grid;
@@ -170,10 +212,6 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   border-radius: 11px;
   box-shadow: 0 8px 24px -6px rgba(79, 70, 229, 0.55);
 }
-.brand--light {
-  color: #fff;
-}
-
 /* ---------- Hero ---------- */
 .hero {
   display: none;
@@ -181,8 +219,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   top: 0;
   height: 100dvh;
   overflow: hidden;
-  color: #fff;
-  background: #070b1a;
+  color: var(--hero-ink);
+  background: var(--hero-bg);
   isolation: isolate;
 }
 .hero__bg {
@@ -194,7 +232,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   position: absolute;
   border-radius: 50%;
   filter: blur(80px);
-  opacity: 0.55;
+  opacity: var(--hero-blob-opacity);
   animation: drift 18s ease-in-out infinite alternate;
 }
 .hero__blob--a {
@@ -218,14 +256,14 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   top: 40%;
   left: 45%;
   background: #a21caf;
-  opacity: 0.35;
+  opacity: var(--hero-blob-c-opacity);
   animation-delay: -12s;
 }
 .hero__grid {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-image: linear-gradient(var(--hero-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid) 1px, transparent 1px);
   background-size: 44px 44px;
   mask-image: radial-gradient(ellipse 80% 70% at 50% 40%, black 30%, transparent 85%);
 }
@@ -252,10 +290,10 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   align-items: center;
   gap: 12px;
   font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--hero-ink-3);
 }
 .hero__trust strong {
-  color: #fff;
+  color: var(--hero-ink);
 }
 .hero__avatars {
   display: flex;
@@ -271,7 +309,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   font-size: 0.66rem;
   font-weight: 800;
   background: linear-gradient(135deg, hsl(var(--hue) 75% 60%), hsl(calc(var(--hue) + 35) 75% 48%));
-  box-shadow: 0 0 0 2px #070b1a;
+  box-shadow: 0 0 0 2px var(--hero-bg);
+  color: #fff;
 }
 .hero__avatars span + span {
   margin-left: -9px;
@@ -290,9 +329,9 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   border-radius: 99px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--hero-ink-2);
+  background: var(--hero-chip);
+  border: 1px solid var(--hero-line);
   backdrop-filter: blur(8px);
 }
 .live-dot {
@@ -317,7 +356,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   letter-spacing: -0.035em;
 }
 .gradient-text {
-  background: linear-gradient(92deg, #a5b4fc 0%, #67e8f9 50%, #f0abfc 100%);
+  background: var(--hero-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -325,21 +364,22 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
 .hero__lead {
   max-width: 46ch;
   font-size: 1.02rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--hero-ink-3);
 }
 
 /* ---------- Radar visual ---------- */
 .hero__visual {
+  --radar: 340px;
   position: relative;
-  height: 250px;
+  height: var(--radar);
   flex-shrink: 0;
 }
 .radar {
   position: absolute;
   top: 0;
   left: 0;
-  width: 250px;
-  height: 250px;
+  width: var(--radar);
+  height: var(--radar);
   border-radius: 50%;
   background: radial-gradient(circle, rgba(103, 232, 249, 0.08), transparent 70%);
 }
@@ -348,7 +388,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   inset: 0;
   margin: auto;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--hero-line);
 }
 .radar__ring:nth-child(1) {
   width: 34%;
@@ -375,9 +415,9 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 14px;
-  height: 14px;
-  margin: -7px 0 0 -7px;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
   border-radius: 50%;
   background: #67e8f9;
   box-shadow: 0 0 0 4px rgba(103, 232, 249, 0.25), 0 0 24px #67e8f9;
@@ -394,11 +434,11 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   position: absolute;
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  color: hsl(var(--hue) 95% 82%);
+  color: hsl(var(--hue) var(--hero-node-s) var(--hero-node-l));
   background: hsl(var(--hue) 70% 50% / 0.22);
   border: 1px solid hsl(var(--hue) 85% 70% / 0.45);
   backdrop-filter: blur(6px);
@@ -406,8 +446,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   animation: bob 4s ease-in-out infinite;
 }
 .radar__node svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
 }
 
 .glass {
@@ -418,18 +458,18 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   width: 270px;
   padding: 12px 14px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--hero-glass);
+  border: 1px solid var(--hero-glass-line);
   backdrop-filter: blur(16px);
-  box-shadow: 0 20px 40px -16px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--hero-glass-shadow);
   animation: float 6s ease-in-out infinite;
 }
 .glass--profile {
-  top: 20px;
+  top: 40px;
   right: 0;
 }
 .glass--message {
-  bottom: 14px;
+  bottom: 40px;
   right: 36px;
   animation-delay: -3s;
 }
@@ -443,7 +483,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   font-size: 0.8rem;
   font-weight: 800;
   background: linear-gradient(135deg, hsl(var(--hue) 80% 62%), hsl(calc(var(--hue) + 40) 80% 52%));
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 2px var(--hero-line);
+  color: #fff;
 }
 .glass__body {
   display: flex;
@@ -459,7 +500,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   font-style: normal;
   font-weight: 500;
   font-size: 0.72rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--hero-ink-4);
   margin-left: 4px;
 }
 .glass__meta,
@@ -468,7 +509,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   align-items: center;
   gap: 4px;
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.65);
+  color: var(--hero-ink-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -489,6 +530,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   flex-shrink: 0;
   border-radius: 10px;
   background: linear-gradient(135deg, #6366f1, #06b6d4);
+  color: #fff;
 }
 .glass__action svg {
   width: 16px;
@@ -499,13 +541,13 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   gap: 3px;
   padding: 8px 9px;
   border-radius: 99px;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--hero-chip);
 }
 .typing i {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--hero-ink-2);
   animation: typing 1.2s ease-in-out infinite;
 }
 .typing i:nth-child(2) {
@@ -530,15 +572,15 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   gap: 12px;
   padding: 12px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--hero-tile);
+  border: 1px solid var(--hero-tile-line);
 }
 .hero__features strong {
   font-size: 0.88rem;
 }
 .hero__features p {
   font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--hero-ink-3);
 }
 .hero__feature-icon {
   display: grid;
@@ -547,9 +589,9 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   height: 36px;
   flex-shrink: 0;
   border-radius: 11px;
-  color: #a5f3fc;
+  color: var(--hero-accent);
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.35), rgba(6, 182, 212, 0.25));
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--hero-line);
 }
 .hero__feature-icon svg {
   width: 18px;
@@ -577,15 +619,21 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
 }
 .auth__top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
   max-width: 460px;
   margin: 0 auto;
 }
-.brand--mobile {
+.brand--top {
   color: var(--text);
+}
+.auth__brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
 }
 .theme-btn {
   display: grid;
@@ -676,31 +724,59 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
 }
 
 @media (min-width: 1024px) {
+  /* The showcase fills the whole screen; its content stays on the left and the form floats on the right as a card. */
   .auth {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    background: var(--hero-bg);
   }
   .hero {
     display: block;
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
-  .brand--mobile {
-    display: none;
+  .hero__inner {
+    width: 52.4%;
+    max-width: none;
+    margin: 0;
+    padding: 32px clamp(40px, 5vw, 96px);
+  }
+  .hero__inner > * {
+    width: 100%;
+    max-width: 600px;
+    margin-inline: auto;
   }
   .auth__main {
+    grid-column: 2;
+    grid-row: 1;
+    z-index: 1;
     padding: 28px 40px;
+    background: transparent;
   }
-  .auth__top {
-    max-width: none;
+  .auth__glow {
+    display: none;
+  }
+  .brand--top {
+    color: var(--hero-ink);
+  }
+  .auth__foot {
+    color: var(--hero-ink-4);
   }
   .auth__panel {
     max-width: 460px;
-    padding: 0;
-    background: none;
-    border: 0;
-    box-shadow: none;
+    padding: 36px;
+    background: var(--surface);
+    border: 1px solid var(--hero-line);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--hero-panel-shadow);
     backdrop-filter: none;
   }
 }
 
+@media (min-width: 1024px) and (max-height: 980px) {
+  .hero__visual {
+    --radar: 290px;
+  }
+}
 @media (min-width: 1024px) and (max-height: 860px) {
   .hero__visual {
     display: none;

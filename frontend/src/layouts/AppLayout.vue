@@ -16,6 +16,7 @@ import {
   Search,
   ShieldHalf,
   Tag,
+  Crown,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
@@ -167,6 +168,7 @@ function logout() {
             </div>
             <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> View profile</RouterLink>
             <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> My listings</RouterLink>
+            <RouterLink to="/plans" class="menu-item"><Crown /> Plans</RouterLink>
             <RouterLink to="/settings" class="menu-item"><Settings /> Settings & privacy</RouterLink>
             <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> Admin panel</RouterLink>
             <div class="menu-sep" />

@@ -1,8 +1,9 @@
 import { Op } from 'sequelize';
-import { Message, Listing } from '../models/index.js';
+import { Message, Listing, User } from '../models/index.js';
 import { emitToUser } from '../socket/emitter.js';
-import { forbidden, badRequest } from '../utils/http.js';
+import { badRequest } from '../utils/http.js';
 import { areConnected, getConnectionIds } from './social.js';
+import { limitsFor, planLimit } from './entitlements.js';
 
 export const MAX_MESSAGE_LENGTH = 2000;
 
@@ -24,19 +25,22 @@ export async function sellersAmong(ids) {
  */
 export async function canMessage(senderId, receiverId) {
   if (await areConnected(senderId, receiverId)) return true;
+  // Plans with "message anyone" may start a conversation with any active member.
+  const [sender, receiver] = await Promise.all([User.findByPk(senderId), User.findByPk(receiverId)]);
+  if (!receiver || receiver.suspendedAt) return false;
+  if ((await limitsFor(sender)).messageAnyone) return true;
   const sellers = await sellersAmong([senderId, receiverId]);
   if (sellers.has(receiverId)) return true;
-  if (sellers.has(senderId)) {
-    return (await Message.count({ where: { senderId: receiverId, receiverId: senderId } })) > 0;
-  }
-  return false;
+  // Anyone may reply to someone who wrote to them first.
+  return (await Message.count({ where: { senderId: receiverId, receiverId: senderId } })) > 0;
 }
 
 /** Batch version of canMessage for the conversation list. `wroteToMe` = partners who have messaged `me`. */
 export async function messageableAmong(me, partnerIds, wroteToMe) {
-  const [connected, sellers] = await Promise.all([getConnectionIds(me), sellersAmong([me, ...partnerIds])]);
-  const iSell = sellers.has(me);
-  return new Set(partnerIds.filter((id) => connected.has(id) || sellers.has(id) || (iSell && wroteToMe.has(id))));
+  const user = await User.findByPk(me);
+  if ((await limitsFor(user)).messageAnyone) return new Set(partnerIds);
+  const [connected, sellers] = await Promise.all([getConnectionIds(me), sellersAmong(partnerIds)]);
+  return new Set(partnerIds.filter((id) => connected.has(id) || sellers.has(id) || wroteToMe.has(id)));
 }
 
 export async function sendMessage(senderId, receiverId, rawBody) {
@@ -45,7 +49,9 @@ export async function sendMessage(senderId, receiverId, rawBody) {
   if (body.length > MAX_MESSAGE_LENGTH) throw badRequest(`Message is too long (max ${MAX_MESSAGE_LENGTH})`);
   if (senderId === receiverId) throw badRequest('You cannot message yourself');
   if (!(await canMessage(senderId, receiverId))) {
-    throw forbidden('You can message people in your network or members who are selling something');
+    throw planLimit(
+      'You can message people in your network or members who are selling something. Upgrade your plan to message anyone.',
+    );
   }
 
   const message = await Message.create({ senderId, receiverId, body });

@@ -71,6 +71,12 @@ const routes = [
         meta: { title: 'Settings' },
       },
       {
+        path: 'plans',
+        name: 'plans',
+        component: () => import('@/views/PlansView.vue'),
+        meta: { title: 'Plans' },
+      },
+      {
         path: 'admin',
         name: 'admin',
         component: () => import('@/views/AdminView.vue'),

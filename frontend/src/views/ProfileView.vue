@@ -23,6 +23,7 @@ import {
   Phone,
   House,
   Lock,
+  BadgeCheck,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -183,7 +184,7 @@ async function share() {
               </template>
               <template v-else>
                 <UiButton
-                  v-if="user.connectionStatus !== 'connected' && user.listingCount"
+                  v-if="user.connectionStatus !== 'connected' && (user.listingCount || auth.user?.limits?.messageAnyone)"
                   :to="`/messages/${user.id}`"
                   variant="secondary"
                   :icon="MessageCircle"
@@ -210,6 +211,7 @@ async function share() {
           <div class="header__info">
             <div class="row wrap" style="--gap: 10px">
               <h1 class="header__name">{{ user.name }}</h1>
+              <UiBadge v-if="user.verified || (user.isMe && user.limits?.verifiedBadge)" tone="primary" :icon="BadgeCheck">Verified</UiBadge>
               <ProfessionBadge :profession="user.profession" />
             </div>
             <p class="header__role">{{ user.roleTitle || 'No role added yet' }}</p>

@@ -10,10 +10,10 @@ const auth = useAuthStore();
 const router = useRouter();
 useThemeStore();
 
-function onSessionExpired() {
+function onSessionExpired(event) {
   if (!auth.token) return;
   auth.logout();
-  toast.error('Your session expired, please sign in again');
+  toast.error(event.detail?.message || 'Your session expired, please sign in again');
   router.push({ name: 'login' });
 }
 

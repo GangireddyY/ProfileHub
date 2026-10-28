@@ -16,6 +16,7 @@ import professionRoutes from './routes/professions.js';
 import adminRoutes from './routes/admin.js';
 import listingRoutes from './routes/listings.js';
 import searchRoutes from './routes/search.js';
+import planRoutes from './routes/plans.js';
 import { AVATAR_DIR } from './services/avatars.js';
 import { LISTING_IMAGE_DIR } from './services/listingImages.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
@@ -53,6 +54,7 @@ export function createApp() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/professions', professionRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/plans', planRoutes);
   app.use('/api/listings', listingRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api', notFoundHandler);

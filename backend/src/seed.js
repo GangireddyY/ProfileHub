@@ -1,4 +1,10 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import bcrypt from 'bcryptjs';
+import { env } from './config/env.js';
+import { migrator } from './db/migrator.js';
+import { AVATAR_DIR } from './services/avatars.js';
+import { LISTING_IMAGE_DIR } from './services/listingImages.js';
 import {
   initDb,
   sequelize,
@@ -9,9 +15,99 @@ import {
   Notification,
   Listing,
   ProfessionRequest,
+  Plan,
+  PlanRequest,
 } from './models/index.js';
+import { planExpiry } from './models/Plan.js';
+import { FREE_LIMITS } from './constants/planFeatures.js';
 
 const PASSWORD = 'password123';
+
+const PLANS = [
+  {
+    name: 'Free',
+    description: 'Everything you need to get discovered nearby.',
+    price: 0,
+    interval: 'lifetime',
+    features: ['Profile in Discover', 'Chat with your connections'],
+    limits: { ...FREE_LIMITS },
+    sortOrder: 0,
+  },
+  {
+    name: 'Pro',
+    description: 'For professionals and workers who want more clients.',
+    price: 499,
+    interval: 'month',
+    features: [],
+    limits: {
+      maxActiveListings: 25,
+      maxListingPhotos: 8,
+      messageAnyone: true,
+      priorityInDiscover: true,
+      verifiedBadge: true,
+      featuredListings: false,
+      showContactPublicly: false,
+    },
+    sortOrder: 1,
+  },
+  {
+    name: 'Business',
+    description: 'For agencies, contractors and shops with a team.',
+    price: 4999,
+    interval: 'year',
+    features: ['Priority support from the ProfileHUB team'],
+    limits: {
+      maxActiveListings: null,
+      maxListingPhotos: 8,
+      messageAnyone: true,
+      priorityInDiscover: true,
+      verifiedBadge: true,
+      featuredListings: true,
+      showContactPublicly: true,
+    },
+    sortOrder: 2,
+  },
+];
+
+/** Admin accounts survive a reseed unchanged (same id, password and profile), so existing admin sessions keep working. */
+async function snapshotAdmins() {
+  try {
+    return await User.unscoped().findAll({ where: { role: 'admin' }, raw: true });
+  } catch {
+    return []; // First run: there is no users table yet.
+  }
+}
+
+const parseJson = (value, fallback) => {
+  if (typeof value !== 'string') return value ?? fallback;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+async function restoreAdmins(rows) {
+  for (const row of rows) {
+    await User.create({
+      ...row,
+      skills: parseJson(row.skills, []),
+      locationDetails: parseJson(row.locationDetails, null),
+      planId: null,
+      planExpiresAt: null,
+      suspendedAt: null,
+      isOnline: false,
+    });
+  }
+}
+
+/** Uploaded photos of wiped accounts and listings would otherwise stay on disk forever. */
+async function clearUploads(keepAvatars) {
+  await fs.rm(LISTING_IMAGE_DIR, { recursive: true, force: true });
+  const keep = new Set(keepAvatars.filter(Boolean).map((url) => path.basename(url)));
+  const files = await fs.readdir(AVATAR_DIR).catch(() => []);
+  await Promise.all(files.filter((f) => !keep.has(f)).map((f) => fs.rm(path.join(AVATAR_DIR, f), { force: true })));
+}
 
 // Deterministic PRNG so every seed produces the same data.
 let state = 42;
@@ -257,8 +353,16 @@ function experiencesFor(user, { worker = false } = {}) {
 }
 
 async function seed() {
+  // Thousands of INSERTs would bury the login summary printed at the end, whatever DB_LOGGING says.
+  sequelize.options.logging = false;
+  await sequelize.authenticate();
+  const keptAdmins = await snapshotAdmins();
   await sequelize.getQueryInterface().dropAllTables();
-  await initDb();
+  await migrator.up();
+  await restoreAdmins(keptAdmins);
+  await initDb(); // Creates the ADMIN_EMAIL account if it wasn't among the kept admins.
+  await clearUploads(keptAdmins.map((a) => a.avatarUrl));
+
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
   const professions = Object.keys(ROLES);
   const rateFor = ([min, max, unit]) => ({
@@ -266,18 +370,34 @@ async function seed() {
     rateUnit: unit,
   });
 
-  const admin = await User.create({
-    name: 'Admin',
-    email: 'admin@profilehub.dev',
-    passwordHash,
-    role: 'admin',
-    profession: 'other',
-    roleTitle: 'Community Admin',
-    headline: 'Keeping ProfileHUB tidy',
-    bio: 'Admin account: review profession requests and manage the profession list from the Admin panel.',
-    city: 'Bengaluru',
-    discoverable: false,
-  });
+  // The admin comes from ADMIN_EMAIL in .env; a fallback is only created when there is no admin at all.
+  let admins = await User.findAll({ where: { role: 'admin' } });
+  if (!admins.length) {
+    console.warn('No admin found and ADMIN_EMAIL/ADMIN_PASSWORD are not set in .env; creating admin@profilehub.dev.');
+    admins = [
+      await User.create({
+        name: 'Admin',
+        email: 'admin@profilehub.dev',
+        passwordHash,
+        role: 'admin',
+        profession: 'other',
+        roleTitle: 'Community Admin',
+        headline: 'Keeping ProfileHUB tidy',
+        city: 'Bengaluru',
+        discoverable: false,
+      }),
+    ];
+  }
+  const admin = admins.find((a) => a.email === env.adminAccount.email) || admins[0];
+
+  // initDb already created the default (Free) plan; give it the seed's wording and add the paid plans.
+  const [freeSpec, ...paidSpecs] = PLANS;
+  const freePlan = await Plan.findOne({ where: { isDefault: true } });
+  await freePlan.update({ ...freeSpec, currency: 'INR' });
+  const plans = [freePlan];
+  for (const p of paidSpecs) plans.push(await Plan.create({ ...p, currency: 'INR' }));
+  const [, proPlan, businessPlan] = plans;
+  const planFields = (plan) => ({ planId: plan.id, planExpiresAt: planExpiry(plan.interval) });
 
   const demo = await User.create({
     name: 'Demo User',
@@ -296,6 +416,10 @@ async function seed() {
     ...jitter(CITIES[0], 3),
     shareLocation: true,
     locationUpdatedAt: new Date(),
+    contactEmail: 'demo.work@profilehub.dev',
+    phone: '+91 98450 12345',
+    address: '42, 12th Main, HAL 2nd Stage, Indiranagar, Bengaluru 560038',
+    ...planFields(proPlan),
   });
 
   const users = [demo];
@@ -352,6 +476,19 @@ async function seed() {
     workers.push(created);
   }
   users.push(...workers);
+
+  // Plans and contact details for a realistic mix, plus one suspended account to try in the admin panel.
+  const mobile = (i) => `+91 9${String(800000000 + ((i * 7919) % 199999999)).padStart(9, '0')}`;
+  for (const [i, u] of users.slice(1).entries()) {
+    const r = rand();
+    const plan = r < 0.15 ? businessPlan : r < 0.45 ? proPlan : freePlan;
+    await u.update({
+      ...planFields(plan),
+      ...(rand() > 0.4 ? { contactEmail: u.email.replace('@profilehub.dev', '.work@profilehub.dev'), phone: mobile(i + 1) } : {}),
+    });
+  }
+  const suspended = users.find((u) => u.email === 'zara.khan@profilehub.dev');
+  await suspended?.update({ suspendedAt: new Date(Date.now() - 2 * 24 * 3600 * 1000) });
 
   // Random accepted connections between seeded members.
   const pairs = new Set();
@@ -417,6 +554,22 @@ async function seed() {
     await Notification.create({ userId: admin.id, actorId: user.id, type: 'profession_request', entityId: row.id });
   }
 
+  // Free members asking the admin for an upgrade, so the Plan requests tab has something to review.
+  const planAsks = [
+    [proPlan, 'I get a lot of enquiries through ProfileHUB and would like to appear higher in Discover.'],
+    [businessPlan, 'We are a small contracting team of 6 people and want a shared profile.'],
+    [proPlan, ''],
+  ];
+  const freeMembers = (await User.findAll({ where: { planId: freePlan.id, role: 'member', suspendedAt: null } })).filter(
+    (u) => u.id !== demo.id,
+  );
+  for (const [i, [plan, message]] of planAsks.entries()) {
+    const member = freeMembers[i];
+    if (!member) break;
+    const row = await PlanRequest.create({ userId: member.id, planId: plan.id, message });
+    await Notification.create({ userId: admin.id, actorId: member.id, type: 'plan_request', entityId: row.id });
+  }
+
   const now = Date.now();
   const script = [
     [friendA, demo, 'Hey! Saw your profile, are you working with Vue 3 these days?'],
@@ -433,9 +586,28 @@ async function seed() {
     });
   }
 
-  console.log(`Seeded ${users.length + 1} users, ${pairs.size} connections and ${LISTINGS.length} listings.`);
-  console.log(`Sign in with demo@profilehub.dev / ${PASSWORD} (every seeded account uses the same password).`);
-  console.log(`Admin panel: admin@profilehub.dev / ${PASSWORD}`);
+  const pad = (s, n) => String(s).padEnd(n);
+  const line = (role, email, password, note) => console.log(`  ${pad(role, 11)} ${pad(email, 34)} ${pad(password, 22)} ${note}`);
+  console.log(`\nSeeded ${users.length} members, ${plans.length} plans, ${pairs.size} connections and ${LISTINGS.length} listings.`);
+  console.log(`Kept ${keptAdmins.length} admin account(s) unchanged.\n`);
+  console.log('Sign in with:');
+  line('ROLE', 'EMAIL', 'PASSWORD', 'WHAT TO TRY');
+  const knownPasswords = [env.adminAccount.password, PASSWORD].filter(Boolean);
+  for (const a of await User.unscoped().findAll({ where: { role: 'admin' }, order: [['createdAt', 'ASC']] })) {
+    let shown = '(unchanged)';
+    for (const candidate of knownPasswords) {
+      if (await bcrypt.compare(candidate, a.passwordHash)) {
+        shown = candidate;
+        break;
+      }
+    }
+    line('Admin', a.email, shown, 'Admin panel: users, plans, requests');
+  }
+  line('Member', 'demo@profilehub.dev', PASSWORD, 'Pro plan, 3 connections, 3 invitations, a chat');
+  line('Member', 'aarav.sharma@profilehub.dev', PASSWORD, 'Connected to the demo account, sent its messages');
+  line('Member', 'ramesh.gowda@profilehub.dev', PASSWORD, 'Electrician with an hourly rate');
+  line('Member', 'zara.khan@profilehub.dev', PASSWORD, 'Suspended: sign-in is blocked; reactivate it from the admin panel');
+  console.log(`\nEvery other seeded member also uses ${PASSWORD}; find their emails in Admin panel → Users.`);
   await sequelize.close();
 }
 

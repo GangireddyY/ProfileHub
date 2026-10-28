@@ -9,6 +9,7 @@ import { CURRENCIES } from '../constants/professions.js';
 import { requireAuth } from '../middleware/auth.js';
 import { decorateUsers } from '../services/social.js';
 import { listingSearchClause } from '../services/search.js';
+import { limitsFor, limitsByPlan, limitsFrom, planLimit } from '../services/entitlements.js';
 import {
   saveListingImage,
   removeListingImages,
@@ -21,7 +22,23 @@ import { validate, badRequest, notFound, forbidden } from '../utils/http.js';
 const router = Router();
 router.use(requireAuth);
 
-const MAX_ACTIVE_LISTINGS = 50;
+/** Plan check before a listing becomes (or is created) active. */
+async function assertCanActivate(user, limits) {
+  if (limits.maxActiveListings == null) return;
+  const active = await Listing.count({ where: { sellerId: user.id, status: 'active' } });
+  if (active >= limits.maxActiveListings) {
+    throw planLimit(
+      `Your plan allows ${limits.maxActiveListings} active listing${limits.maxActiveListings === 1 ? '' : 's'}. ` +
+        'Mark one as sold or hidden, or request a bigger plan.',
+    );
+  }
+}
+
+function assertPhotoCount(count, limits) {
+  if (count > limits.maxListingPhotos) {
+    throw planLimit(`Your plan allows up to ${limits.maxListingPhotos} photos per listing.`);
+  }
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -62,7 +79,17 @@ const listingSchema = z.object({
   currency: z.enum(CURRENCIES).optional().default('INR'),
   negotiable: boolish.optional().default(false),
   city: z.string().trim().max(100).optional().default(''),
+  /** The spot the seller picked on the map; falls back to their profile location. */
+  latitude: optionalNumber(z.coerce.number().min(-90).max(90)),
+  longitude: optionalNumber(z.coerce.number().min(-180).max(180)),
+}).refine((v) => (v.latitude == null) === (v.longitude == null), {
+  path: ['latitude'],
+  message: 'Pick the location again',
 });
+
+/** Coordinates for a listing: the picked spot if sent, otherwise the seller's shared location. */
+const pickedLocation = (data) =>
+  data.latitude != null ? { latitude: data.latitude, longitude: data.longitude } : null;
 
 const keepImagesSchema = z.preprocess((v) => {
   if (typeof v !== 'string') return v ?? [];
@@ -157,17 +184,27 @@ router.get('/', async (req, res) => {
     distance: [['createdAt', 'DESC']],
   }[f.sort];
 
-  const candidates = await Listing.findAll({ where, order, limit: 2000, include: [{ model: User, as: 'seller' }] });
-  let rows = candidates.map((listing) => ({ listing, distanceKm: distanceTo(me, listing) }));
+  const [candidates, planLimits] = await Promise.all([
+    Listing.findAll({ where, order, limit: 2000, include: [{ model: User, as: 'seller' }] }),
+    limitsByPlan(),
+  ]);
+  let rows = candidates.map((listing) => ({
+    listing,
+    distanceKm: distanceTo(me, listing),
+    featured: Boolean(listing.seller && listing.status === 'active' && limitsFrom(planLimits, listing.seller).featuredListings),
+  }));
   if (distanceApplied) rows = rows.filter((r) => r.distanceKm != null && r.distanceKm <= f.maxDistance);
   if (f.sort === 'distance') rows.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+  // Featured sellers' listings lead the default view; the sort is stable, so newest-first is kept within each group.
+  else if (f.sort === 'newest' && !mine) rows.sort((a, b) => Number(b.featured) - Number(a.featured));
 
   const total = rows.length;
   const pageRows = rows.slice((f.page - 1) * f.limit, f.page * f.limit);
   res.json({
-    items: pageRows.map(({ listing, distanceKm }) => ({
+    items: pageRows.map(({ listing, distanceKm, featured }) => ({
       ...listing.toPublic(),
       distanceKm,
+      featured,
       seller: sellerSummary(listing.seller),
     })),
     total,
@@ -200,6 +237,8 @@ router.get('/:id', async (req, res) => {
       viewCount: listing.viewCount + (isMine ? 0 : 1),
       distanceKm: distanceTo(me, listing),
       isMine,
+      // Only the seller gets the exact pin back, to edit it.
+      ...(isMine ? { latitude: listing.latitude, longitude: listing.longitude } : {}),
       seller: decoratedSeller,
     },
     moreFromSeller: more.map((l) => l.toPublic()),
@@ -208,14 +247,14 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', createLimiter, upload.array('images', MAX_LISTING_IMAGES), async (req, res) => {
   const data = validate(listingSchema, req.body);
-  if ((await Listing.count({ where: { sellerId: req.user.id, status: 'active' } })) >= MAX_ACTIVE_LISTINGS) {
-    throw badRequest(`You can have up to ${MAX_ACTIVE_LISTINGS} active listings`);
-  }
+  const limits = await limitsFor(req.user);
+  await assertCanActivate(req.user, limits);
+  assertPhotoCount(req.files?.length || 0, limits);
   const images = await storeUploads(req.files);
   const listing = await Listing.create({
     ...data,
     city: data.city || req.user.city,
-    ...locationFor(req.user),
+    ...(pickedLocation(data) || locationFor(req.user)),
     images,
     sellerId: req.user.id,
   });
@@ -229,6 +268,8 @@ router.put('/:id', upload.array('images', MAX_LISTING_IMAGES), async (req, res) 
   if (keep.length + (req.files?.length || 0) > MAX_LISTING_IMAGES) {
     throw badRequest(`A listing can have up to ${MAX_LISTING_IMAGES} photos`);
   }
+  // Existing photos above a lower plan limit can stay; only adding more is blocked.
+  if (req.files?.length) assertPhotoCount(keep.length + req.files.length, await limitsFor(req.user));
 
   const added = await storeUploads(req.files);
   const removed = listing.images.filter((url) => !keep.includes(url));
@@ -239,10 +280,11 @@ router.put('/:id', upload.array('images', MAX_LISTING_IMAGES), async (req, res) 
   const ordered = [...new Set(order.map(resolve).filter(Boolean))];
   const images = [...ordered, ...[...keep, ...added].filter((url) => !ordered.includes(url))];
 
+  const { latitude, longitude, ...fields } = data;
   await listing.update({
-    ...data,
+    ...fields,
     city: data.city || req.user.city,
-    ...(listing.latitude == null ? locationFor(req.user) : {}),
+    ...(pickedLocation(data) || (listing.latitude == null ? locationFor(req.user) : {})),
     images,
   });
   await removeListingImages(removed);
@@ -252,6 +294,7 @@ router.put('/:id', upload.array('images', MAX_LISTING_IMAGES), async (req, res) 
 router.patch('/:id/status', async (req, res) => {
   const listing = await findOwnListing(req);
   const { status } = validate(z.object({ status: z.enum(LISTING_STATUSES) }), req.body);
+  if (status === 'active' && listing.status !== 'active') await assertCanActivate(req.user, await limitsFor(req.user));
   await listing.update({ status, soldAt: status === 'sold' ? listing.soldAt || new Date() : null });
   res.json({ listing: listing.toPublic() });
 });

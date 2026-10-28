@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { MapPin, Users, Navigation } from 'lucide-vue-next';
+import { MapPin, Users, Navigation, BadgeCheck } from 'lucide-vue-next';
 import { getProfession } from '@/constants/professions';
 import { useRealtimeStore } from '@/stores/realtime';
 import { formatDistance, formatCount, formatRate } from '@/utils/format';
@@ -26,7 +26,10 @@ const rate = computed(() => formatRate(props.user));
 
     <RouterLink :to="`/u/${user.id}`" class="pcard__main">
       <UiAvatar :name="user.name" :src="user.avatarUrl" :size="76" :online="online" ring class="pcard__avatar" />
-      <h3 class="pcard__name truncate">{{ user.name }}</h3>
+      <h3 class="pcard__name">
+        <span class="truncate">{{ user.name }}</span>
+        <BadgeCheck v-if="user.verified" class="pcard__verified" aria-label="Verified" />
+      </h3>
       <p class="pcard__role">{{ user.roleTitle || user.headline || 'Member' }}</p>
       <span v-if="rate" class="pcard__rate">{{ rate }}</span>
 
@@ -139,9 +142,18 @@ const rate = computed(() => formatRate(props.user));
   margin-bottom: 10px;
 }
 .pcard__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   max-width: 100%;
   font-size: 1.02rem;
   font-weight: 700;
+}
+.pcard__verified {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  color: var(--primary);
 }
 .pcard__role {
   color: var(--text-2);

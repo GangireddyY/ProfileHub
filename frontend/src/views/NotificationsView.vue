@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { Bell, BellRing, UserPlus, UserCheck, CheckCheck, BriefcaseBusiness, CircleCheck, CircleX } from 'lucide-vue-next';
+import { Bell, BellRing, UserPlus, UserCheck, CheckCheck, BriefcaseBusiness, CircleCheck, CircleX, Crown } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -31,6 +31,9 @@ const TEXT = {
   profession_request: (m) => `asked to add “${m?.label ?? 'a profession'}” to the profession list`,
   profession_approved: (m) => `approved your request. “${m?.professionLabel ?? m?.label}” is now in the profession list`,
   profession_rejected: (m) => `declined your request for “${m?.label ?? 'a profession'}”`,
+  plan_request: (m) => `asked to move to the ${m?.planName ?? 'a new'} plan`,
+  plan_approved: (m) => `approved your request. You're now on the ${m?.planName ?? 'new'} plan`,
+  plan_rejected: (m) => `declined your request for the ${m?.planName ?? ''} plan`,
 };
 const ICON = {
   connection_request: UserPlus,
@@ -38,8 +41,12 @@ const ICON = {
   profession_request: BriefcaseBusiness,
   profession_approved: CircleCheck,
   profession_rejected: CircleX,
+  plan_request: Crown,
+  plan_approved: CircleCheck,
+  plan_rejected: CircleX,
 };
 const isProfession = (n) => n.type.startsWith('profession_');
+const isPlan = (n) => n.type.startsWith('plan_');
 
 const filters = computed(() => [
   { key: 'all', label: 'All', icon: BellRing, count: items.value.length },
@@ -188,6 +195,8 @@ watch(
                 {{ TEXT[n.type]?.(n.meta) }}
               </p>
               <p v-if="n.type === 'profession_rejected' && n.meta?.reviewNote" class="item__note">“{{ n.meta.reviewNote }}”</p>
+              <p v-else-if="isPlan(n) && n.type !== 'plan_request' && n.meta?.reviewNote" class="item__note">“{{ n.meta.reviewNote }}”</p>
+              <p v-else-if="n.type === 'plan_request' && n.meta?.message" class="item__note">“{{ n.meta.message }}”</p>
               <div class="row wrap item__meta" style="--gap: 8px">
                 <ProfessionBadge :profession="n.actor.profession" size="sm" />
                 <span class="subtle">{{ timeAgo(n.createdAt) }}</span>
@@ -208,6 +217,17 @@ watch(
                   View profile
                 </UiButton>
                 <UiButton v-else size="sm" variant="ghost" to="/settings#profile">Pick another</UiButton>
+              </template>
+              <template v-else-if="isPlan(n)">
+                <UiButton
+                  v-if="n.type === 'plan_request'"
+                  size="sm"
+                  :variant="n.meta?.status === 'pending' ? 'primary' : 'ghost'"
+                  :to="{ path: '/admin', query: { tab: 'plan-requests' } }"
+                >
+                  {{ n.meta?.status === 'pending' ? 'Review' : 'Reviewed' }}
+                </UiButton>
+                <UiButton v-else size="sm" :variant="n.type === 'plan_approved' ? 'soft' : 'ghost'" to="/plans">View plans</UiButton>
               </template>
               <ConnectButton
                 v-else-if="n.type === 'connection_request' && n.actor.connectionStatus !== 'none'"
@@ -340,13 +360,16 @@ watch(
   background: var(--primary);
 }
 .item__type--connection_accepted,
-.item__type--profession_approved {
+.item__type--profession_approved,
+.item__type--plan_approved {
   background: var(--success);
 }
-.item__type--profession_request {
+.item__type--profession_request,
+.item__type--plan_request {
   background: var(--warning);
 }
-.item__type--profession_rejected {
+.item__type--profession_rejected,
+.item__type--plan_rejected {
   background: var(--danger);
 }
 .item__note {

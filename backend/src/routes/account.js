@@ -1,17 +1,16 @@
 import { Router } from 'express';
-import { Op } from 'sequelize';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { sequelize, User, Connection, Message, Experience, Notification, Listing, ProfessionRequest } from '../models/index.js';
-import { removeListingImages } from '../services/listingImages.js';
+import { User, Experience } from '../models/index.js';
 import { EXPERIENCE_KINDS } from '../models/Experience.js';
 import { requireAuth } from '../middleware/auth.js';
 import { buildSelf } from '../services/social.js';
 import { listExperiences } from '../services/experiences.js';
+import { deleteAccount } from '../services/accounts.js';
 import { saveAvatar, removeAvatarFile, MAX_AVATAR_BYTES, AVATAR_MIME_TYPES } from '../services/avatars.js';
-import { disconnectUser, broadcast } from '../socket/emitter.js';
+import { disconnectUser } from '../socket/emitter.js';
 import { signToken } from '../utils/token.js';
 import { validate, badRequest, notFound, HttpError } from '../utils/http.js';
 
@@ -94,24 +93,7 @@ router.delete('/', sensitiveLimiter, requireAuth, async (req, res) => {
   const { password } = validate(z.object({ password: z.string().min(1, 'Enter your password') }), req.body);
   const user = await loadWithPassword(req.user.id);
   await assertPassword(user, password);
-
-  const id = user.id;
-  const listingImages = (await Listing.findAll({ where: { sellerId: id }, attributes: ['images'] })).flatMap((l) => l.images);
-  await sequelize.transaction(async (transaction) => {
-    await Message.destroy({ where: { [Op.or]: [{ senderId: id }, { receiverId: id }] }, transaction });
-    await Connection.destroy({ where: { [Op.or]: [{ requesterId: id }, { addresseeId: id }] }, transaction });
-    await Notification.destroy({ where: { [Op.or]: [{ userId: id }, { actorId: id }] }, transaction });
-    await Experience.destroy({ where: { userId: id }, transaction });
-    await Listing.destroy({ where: { sellerId: id }, transaction });
-    await ProfessionRequest.destroy({ where: { userId: id }, transaction });
-    await ProfessionRequest.update({ reviewedById: null }, { where: { reviewedById: id }, transaction });
-    await user.destroy({ transaction });
-  });
-  await removeAvatarFile(user.avatarUrl);
-  await removeListingImages(listingImages);
-
-  disconnectUser(id);
-  broadcast('presence', { userId: id, online: false, lastSeenAt: null });
+  await deleteAccount(user);
   res.status(204).end();
 });
 

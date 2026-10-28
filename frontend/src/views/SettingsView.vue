@@ -28,6 +28,7 @@ import {
   Phone,
   Pencil,
   House,
+  Crown,
   Award,
   BadgeIndianRupee,
 } from 'lucide-vue-next';
@@ -43,6 +44,7 @@ import UiSelect from '@/components/ui/UiSelect.vue';
 import { formatRate } from '@/utils/format';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import LocationCard from '@/components/LocationCard.vue';
+import { formatPlanPrice, formatDate } from '@/constants/plans';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiInput from '@/components/ui/UiInput.vue';
 import UiTextarea from '@/components/ui/UiTextarea.vue';
@@ -147,6 +149,14 @@ const summary = computed(() => {
     { label: 'Availability', value: u.availableForWork ? 'Available for work' : 'Not looking right now', icon: BriefcaseBusiness },
     { label: 'Email', value: u.contactEmail, icon: Mail, href: u.contactEmail && `mailto:${u.contactEmail}` },
     { label: 'Mobile', value: u.phone, icon: Phone, href: u.phone && `tel:${u.phone.replace(/[\s-]/g, '')}` },
+    {
+      label: 'Membership plan',
+      value: u.plan
+        ? `${u.plan.name} · ${formatPlanPrice(u.plan)}${u.planExpiresAt ? ` · until ${formatDate(u.planExpiresAt)}` : ''}`
+        : 'Free member',
+      icon: Crown,
+      to: '/plans',
+    },
     { label: 'Address', value: u.address, icon: House, wide: true },
   ];
 });
@@ -360,7 +370,10 @@ async function deleteAccount() {
                 <span class="summary__icon"><component :is="row.icon" /></span>
                 <div class="summary__text">
                   <dt>{{ row.label }}</dt>
-                  <dd v-if="row.value && row.href"><a :href="row.href">{{ row.value }}</a></dd>
+                  <dd v-if="row.to">
+                    {{ row.value }} · <RouterLink :to="row.to" class="summary__link">View plans</RouterLink>
+                  </dd>
+                  <dd v-else-if="row.value && row.href"><a :href="row.href">{{ row.value }}</a></dd>
                   <dd v-else-if="row.value">{{ row.value }}</dd>
                   <dd v-else class="summary__empty">Not added</dd>
                 </div>
@@ -914,6 +927,9 @@ async function deleteAccount() {
 }
 .summary__text dd a:hover {
   text-decoration: underline;
+}
+.summary__link {
+  font-weight: 600;
 }
 .summary__empty {
   font-weight: 500;

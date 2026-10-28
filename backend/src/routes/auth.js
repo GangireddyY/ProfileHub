@@ -3,9 +3,10 @@ import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { User } from '../models/index.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, SUSPENDED_MESSAGE } from '../middleware/auth.js';
 import { buildSelf } from '../services/social.js';
 import { assertProfession, submitRequest } from '../services/professions.js';
+import { defaultPlan, planFields } from '../services/plans.js';
 import { professionRequestSchema } from './professions.js';
 import { RATE_UNITS, CURRENCIES } from '../constants/professions.js';
 import { signToken } from '../utils/token.js';
@@ -62,7 +63,9 @@ router.post('/signup', authLimiter, async (req, res) => {
   await assertProfession(data.profession);
 
   const passwordHash = await bcrypt.hash(data.password, 10);
+  const starter = await defaultPlan();
   const user = await User.create({
+    ...(starter ? planFields(starter) : {}),
     name: data.name,
     email,
     passwordHash,
@@ -93,6 +96,7 @@ router.post('/login', authLimiter, async (req, res) => {
   const user = await User.unscoped().findOne({ where: { email: email.toLowerCase() } });
   const valid = user && (await bcrypt.compare(password, user.passwordHash));
   if (!valid) throw new HttpError(401, 'Incorrect email or password');
+  if (user.suspendedAt) throw new HttpError(403, SUSPENDED_MESSAGE);
 
   res.json({ token: signToken(user.id), user: await buildSelf(user) });
 });

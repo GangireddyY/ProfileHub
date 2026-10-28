@@ -34,4 +34,13 @@ export const env = {
     .split(',')
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean),
+  /**
+   * Main admin account. Created on startup if it doesn't exist; the password is only used for that first
+   * creation, so the admin can change it (and the rest of the profile) from Settings afterwards.
+   */
+  adminAccount: {
+    email: (process.env.ADMIN_EMAIL || '').trim().toLowerCase(),
+    password: process.env.ADMIN_PASSWORD || '',
+    name: (process.env.ADMIN_NAME || 'Administrator').trim(),
+  },
 };

@@ -28,8 +28,8 @@ export function initSocket(httpServer) {
   io.use(async (socket, next) => {
     try {
       const payload = verifyToken(socket.handshake.auth?.token);
-      const user = await User.findByPk(payload.sub, { attributes: ['id', 'passwordChangedAt'] });
-      if (!user || isTokenStale(user, payload)) throw new Error('invalid session');
+      const user = await User.findByPk(payload.sub, { attributes: ['id', 'passwordChangedAt', 'suspendedAt'] });
+      if (!user || isTokenStale(user, payload) || user.suspendedAt) throw new Error('invalid session');
       socket.data.userId = user.id;
       next();
     } catch {

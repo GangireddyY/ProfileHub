@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   ShieldHalf,
   Users,
@@ -14,6 +15,9 @@ import {
   Search,
   Inbox,
   Flame,
+  Crown,
+  Ban,
+  Send,
 } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { useProfessionsStore } from '@/stores/professions';
@@ -34,11 +38,37 @@ import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ProfessionForm from '@/components/admin/ProfessionForm.vue';
 import BackButton from '@/components/BackButton.vue';
+import AdminUsers from '@/components/admin/AdminUsers.vue';
+import AdminPlans from '@/components/admin/AdminPlans.vue';
+import AdminPlanRequests from '@/components/admin/AdminPlanRequests.vue';
 
 const store = useProfessionsStore();
 
-const tab = ref('requests');
+const route = useRoute();
+const TAB_KEYS = ['users', 'plans', 'plan-requests', 'requests', 'catalog'];
+// Notifications link straight to a tab, e.g. /admin?tab=plan-requests.
+const tab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'users');
+watch(
+  () => route.query.tab,
+  (t) => TAB_KEYS.includes(t) && (tab.value = t),
+);
 const stats = ref(null);
+
+const plans = ref([]);
+const loadingPlans = ref(true);
+async function loadPlans() {
+  try {
+    plans.value = (await api.get('/admin/plans')).data.items;
+  } catch (err) {
+    toast.error(errorMessage(err));
+  } finally {
+    loadingPlans.value = false;
+  }
+}
+function onAccountsChanged() {
+  loadStats();
+  loadPlans();
+}
 
 async function loadStats() {
   try {
@@ -50,12 +80,23 @@ async function loadStats() {
 
 const statCards = computed(() => [
   { label: 'Members', value: stats.value?.users, icon: Users },
-  { label: 'Pending requests', value: stats.value?.pendingRequests, icon: Hourglass, hot: stats.value?.pendingRequests > 0 },
+  { label: 'On a paid plan', value: stats.value?.subscribers, icon: Crown },
+  {
+    label: 'Plan requests',
+    value: stats.value?.pendingPlanRequests,
+    icon: Send,
+    hot: stats.value?.pendingPlanRequests > 0,
+  },
+  { label: 'Suspended', value: stats.value?.suspended, icon: Ban, hot: stats.value?.suspended > 0 },
+  { label: 'Profession requests', value: stats.value?.pendingRequests, icon: Hourglass, hot: stats.value?.pendingRequests > 0 },
   { label: 'Professions', value: stats.value?.professions, icon: BriefcaseBusiness },
   { label: 'Active listings', value: stats.value?.activeListings, icon: Store },
   { label: 'Open to work', value: stats.value?.availableWorkers, icon: HardHat },
 ]);
 const tabs = computed(() => [
+  { key: 'users', label: 'Users', icon: Users, count: stats.value?.users || undefined },
+  { key: 'plans', label: 'Plans', icon: Crown, count: plans.value.length || undefined },
+  { key: 'plan-requests', label: 'Plan requests', icon: Send, count: stats.value?.pendingPlanRequests || undefined },
   { key: 'requests', label: 'Profession requests', icon: Inbox, count: stats.value?.pendingRequests || undefined },
   { key: 'catalog', label: 'Profession list', icon: BriefcaseBusiness },
 ]);
@@ -237,7 +278,9 @@ async function toggleActive(p) {
 
 onMounted(() => {
   loadStats();
+  loadPlans();
   loadRequests();
+  if (tab.value === 'catalog') loadCatalog();
 });
 </script>
 
@@ -249,7 +292,7 @@ onMounted(() => {
         <span class="head-icon"><ShieldHalf /></span>
         <div>
           <h1 class="page-title">Admin panel</h1>
-          <p class="muted">Review profession requests and keep the profession list tidy.</p>
+          <p class="muted">Manage every account and plan, review profession requests and keep the profession list tidy.</p>
         </div>
       </div>
     </header>
@@ -267,8 +310,12 @@ onMounted(() => {
 
     <UiTabs v-model="tab" :tabs="tabs" />
 
+    <AdminUsers v-if="tab === 'users'" :plans="plans" @changed="onAccountsChanged" />
+    <AdminPlans v-else-if="tab === 'plans'" :plans="plans" :loading="loadingPlans" @changed="onAccountsChanged" />
+    <AdminPlanRequests v-else-if="tab === 'plan-requests'" @changed="onAccountsChanged" />
+
     <!-- Requests -->
-    <template v-if="tab === 'requests'">
+    <template v-else-if="tab === 'requests'">
       <div class="segmented" role="tablist">
         <button
           v-for="s in STATUS_TABS"
@@ -462,13 +509,14 @@ onMounted(() => {
 }
 .stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 12px;
 }
 .stat {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
   padding: 14px 16px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -481,9 +529,16 @@ onMounted(() => {
   font-weight: 800;
   line-height: 1.1;
 }
+.stat > div {
+  min-width: 0;
+}
 .stat span:last-child {
+  display: block;
   font-size: 0.8rem;
   color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .stat__icon {
   display: grid;

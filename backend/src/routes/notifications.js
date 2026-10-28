@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { Op } from 'sequelize';
 import { z } from 'zod';
-import { Notification, User, ProfessionRequest } from '../models/index.js';
+import { Notification, User, ProfessionRequest, PlanRequest, Plan } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
 import { decorateUsers } from '../services/social.js';
 import { unreadNotificationCount } from '../services/notifications.js';
@@ -41,7 +41,20 @@ router.get('/', async (req, res) => {
     : [[], []];
   const requestMap = new Map(requests.map((r) => [r.id, r]));
   const labels = new Map(professions.map((p) => [p.key, p.label]));
+
+  const planRequestIds = page.filter((n) => n.type.startsWith('plan_') && n.entityId).map((n) => n.entityId);
+  const planRequests = planRequestIds.length
+    ? await PlanRequest.findAll({ where: { id: { [Op.in]: planRequestIds } }, include: [{ model: Plan, as: 'plan' }] })
+    : [];
+  const planRequestMap = new Map(planRequests.map((r) => [r.id, r]));
+
   const metaFor = (n) => {
+    if (n.type.startsWith('plan_')) {
+      const pr = planRequestMap.get(n.entityId);
+      return pr
+        ? { planName: pr.plan?.name ?? 'a plan', status: pr.status, message: pr.message, reviewNote: pr.reviewNote }
+        : null;
+    }
     const r = requestMap.get(n.entityId);
     if (!r) return null;
     return {

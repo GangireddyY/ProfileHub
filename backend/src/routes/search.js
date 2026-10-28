@@ -28,7 +28,12 @@ router.get('/', async (req, res) => {
     .sort((a, b) => a.label.toLowerCase().indexOf(term) - b.label.toLowerCase().indexOf(term))
     .slice(0, 12);
 
-  const peopleWhere = { id: { [Op.ne]: me.id }, discoverable: true, [Op.and]: [await userSearchClause(q)] };
+  const peopleWhere = {
+    id: { [Op.ne]: me.id },
+    discoverable: true,
+    suspendedAt: null,
+    [Op.and]: [await userSearchClause(q)],
+  };
   const listingWhere = { status: 'active', [Op.and]: [listingSearchClause(q)] };
 
   const [people, peopleTotal, listings, listingTotal, counts] = await Promise.all([
@@ -39,7 +44,7 @@ router.get('/', async (req, res) => {
     professionMatches.length
       ? User.findAll({
           attributes: ['profession', [fn('COUNT', col('id')), 'count']],
-          where: { discoverable: true, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
+          where: { discoverable: true, suspendedAt: null, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
           group: ['profession'],
           raw: true,
         })
