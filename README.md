@@ -7,21 +7,21 @@ A professional network and local marketplace with **location-based discovery**, 
 | Layer    | Tech                                                                 |
 | -------- | -------------------------------------------------------------------- |
 | Frontend | Vue 3 (Composition API), Vite, Pinia, Vue Router, socket.io-client   |
-| UI       | Custom component library (`client/src/components/ui`), CSS variables, light/dark themes, mobile-first |
+| UI       | Custom component library (`frontend/src/components/ui`), CSS variables, light/dark themes, mobile-first |
 | Backend  | Node.js, Express 5, Sequelize ORM, Socket.IO, JWT, Zod validation    |
 | Database | SQLite by default (zero setup); PostgreSQL / MySQL via `DATABASE_URL` |
 
 ## Quick start
 
 ```bash
-npm run install:all      # installs root, server and client dependencies
-cp server/.env.example server/.env
+npm run install:all      # installs root, backend and frontend dependencies
+cp backend/.env.example backend/.env
 npm run seed             # creates 37 demo users around Bengaluru + connections + a chat
 npm run dev              # API on :4000, web app on :5173
 ```
 
 Sign in with **demo@profilehub.dev / password123** (every seeded account uses `password123`).
-The seeded admin is **admin@profilehub.dev**. To make your own account an admin, add its email to `ADMIN_EMAILS` in `server/.env` and restart the server.
+The seeded admin is **admin@profilehub.dev**. To make your own account an admin, add its email to `ADMIN_EMAILS` in `backend/.env` and restart the server.
 
 To try it on a phone on the same Wi-Fi, run `npm run dev:host` and open the `https://…` "Network" URL Vite prints.
 It uses a self-signed certificate (accept the browser warning once) because phones only allow location access over HTTPS.
@@ -47,7 +47,7 @@ It uses a self-signed certificate (accept the browser warning once) because phon
 ## Project layout
 
 ```
-server/src
+backend/src
   config/        env + Sequelize connection
   db/            Umzug migrator + migrations/
   models/        User, Connection, Message, Experience, Notification, Profession, ProfessionRequest, Listing
@@ -55,7 +55,7 @@ server/src
   services/      relationships, messages, notifications, avatars, experiences, professions, listing images, search
   socket/        Socket.IO auth, presence, typing, emit helpers
   seed.js        demo data
-client/src
+frontend/src
   components/ui      UiButton, UiInput, UiToggle, UiRange, UiSheet, UiTabs, UiAvatar, ...
   components/        ProfileCard, ConnectButton, FilterPanel, ProfessionPicker, chat/*, profile/*
   stores/            auth, realtime (socket + presence), chat, theme
@@ -64,16 +64,16 @@ client/src
 
 ## Database migrations
 
-The schema lives in `server/src/db/migrations`, and the server applies any pending migrations when it starts (the applied list is kept in the `SequelizeMeta` table).
-To change the schema, add a new file such as `002-add-something.js` that exports `up` and `down`, and register it in `server/src/db/migrator.js`. Never edit a migration that has already shipped.
+The schema lives in `backend/src/db/migrations`, and the server applies any pending migrations when it starts (the applied list is kept in the `SequelizeMeta` table).
+To change the schema, add a new file such as `002-add-something.js` that exports `up` and `down`, and register it in `backend/src/db/migrator.js`. Never edit a migration that has already shipped.
 `npm run seed` drops every table and rebuilds the database from the migrations.
 
 ## Production
 
 ```bash
-npm run build                            # builds client/dist
+npm run build                            # builds frontend/dist
 NODE_ENV=production JWT_SECRET=... npm start
 ```
 
-The API serves the built app from the same origin. For PostgreSQL run `npm i pg pg-hstore` in `server/` and set `DATABASE_URL`.
-Uploaded photos are stored in `server/uploads` (change it with `UPLOAD_DIR`). Point that at persistent storage when you deploy.
+The API serves the built app from the same origin. For PostgreSQL run `npm i pg pg-hstore` in `backend/` and set `DATABASE_URL`.
+Uploaded photos are stored in `backend/uploads` (change it with `UPLOAD_DIR`). Point that at persistent storage when you deploy.

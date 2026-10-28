@@ -21,7 +21,7 @@ export const PROFESSION_CATEGORIES = [
 
 export const CATEGORY_KEYS = PROFESSION_CATEGORIES.map((c) => c.key);
 
-/** Icons the client knows how to render (see client/src/constants/professions.js). */
+/** Icons the client knows how to render (see frontend/src/constants/professions.js). */
 export const PROFESSION_ICONS = [
   'Accessibility', 'Ambulance', 'Anchor', 'Armchair', 'Baby', 'Bed', 'Bike', 'BookOpen', 'Boxes', 'Brain',
   'BrickWall', 'Briefcase', 'Brush', 'Bubbles', 'Building', 'Building2', 'Bus', 'Cable', 'Calculator', 'Camera',

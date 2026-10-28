@@ -25,11 +25,11 @@
   --warning: #f59e0b;
   --warning-soft: #fef5e6;
 
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 28px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
   --radius-full: 999px;
 
   --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
@@ -42,8 +42,8 @@
   --nav-h: 64px;
   --tabbar-h: 64px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --content-max: 1680px;
-  --page-pad: clamp(14px, 2.5vw, 40px);
+  --content-max: 100%;
+  --page-pad: clamp(12px, 1.25vw, 20px);
   --aside-w: 300px;
 
   color-scheme: light;

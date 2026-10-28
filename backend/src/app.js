@@ -21,7 +21,7 @@ import { LISTING_IMAGE_DIR } from './services/listingImages.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const clientDist = path.resolve(__dirname, '../../client/dist');
+const clientDist = path.resolve(__dirname, '../../frontend/dist');
 
 export function createApp() {
   const app = express();

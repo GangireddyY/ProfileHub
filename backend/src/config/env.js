@@ -18,6 +18,15 @@ export const env = {
     .map((o) => o.trim())
     .filter(Boolean),
   databaseUrl: process.env.DATABASE_URL || '',
+  /** Postgres connection used when DB_NAME is set and DATABASE_URL is not. */
+  db: {
+    name: process.env.DB_NAME || '',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || '',
+    host: process.env.DB_HOST || 'localhost',
+    port: Number(process.env.DB_PORT) || 5432,
+    logging: process.env.DB_LOGGING === 'true',
+  },
   dbStorage: process.env.DB_STORAGE || './data/profilehub.sqlite',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
   /** Accounts with these emails are given the admin role every time the server starts. */
