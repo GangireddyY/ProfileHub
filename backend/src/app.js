@@ -17,8 +17,15 @@ import adminRoutes from './routes/admin.js';
 import listingRoutes from './routes/listings.js';
 import searchRoutes from './routes/search.js';
 import planRoutes from './routes/plans.js';
+import reportRoutes from './routes/reports.js';
+import blockRoutes from './routes/blocks.js';
+import reviewRoutes from './routes/reviews.js';
+import pushRoutes from './routes/push.js';
+import { csrfGuard } from './middleware/auth.js';
+import { apiLimiter } from './middleware/limits.js';
 import { AVATAR_DIR } from './services/avatars.js';
 import { LISTING_IMAGE_DIR } from './services/listingImages.js';
+import { CHAT_IMAGE_DIR } from './services/chatImages.js';
 import { errorHandler, notFoundHandler } from './middleware/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,6 +53,7 @@ export function createApp() {
   if (!env.isProd) app.use(morgan('dev'));
 
   app.get('/api/health', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+  app.use('/api', apiLimiter, csrfGuard);
   app.use('/api/auth', authRoutes);
   app.use('/api/users/me', accountRoutes);
   app.use('/api/users', userRoutes);
@@ -55,6 +63,10 @@ export function createApp() {
   app.use('/api/professions', professionRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/plans', planRoutes);
+  app.use('/api/reports', reportRoutes);
+  app.use('/api/blocks', blockRoutes);
+  app.use('/api/reviews', reviewRoutes);
+  app.use('/api/push', pushRoutes);
   app.use('/api/listings', listingRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api', notFoundHandler);
@@ -66,6 +78,10 @@ export function createApp() {
   app.use(
     '/uploads/listings',
     express.static(LISTING_IMAGE_DIR, { maxAge: '30d', immutable: true, index: false, fallthrough: false }),
+  );
+  app.use(
+    '/uploads/messages',
+    express.static(CHAT_IMAGE_DIR, { maxAge: '30d', immutable: true, index: false, fallthrough: false }),
   );
 
   // Serve the built Vue app (npm run build) from the same origin in production.

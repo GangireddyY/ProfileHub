@@ -17,6 +17,7 @@ import {
   Share2,
   PackageX,
   ShieldCheck,
+  Flag,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
@@ -33,6 +34,7 @@ import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
 import ListingCard from '@/components/market/ListingCard.vue';
 import BackButton from '@/components/BackButton.vue';
+import ReportDialog from '@/components/ReportDialog.vue';
 
 const props = defineProps({ id: { type: String, required: true } });
 const router = useRouter();
@@ -48,6 +50,7 @@ const confirmDelete = ref(false);
 const category = computed(() => getListingCategory(listing.value?.category));
 const images = computed(() => listing.value?.images || []);
 const seller = computed(() => listing.value?.seller);
+const reportOpen = ref(false);
 
 async function load() {
   loading.value = true;
@@ -197,7 +200,19 @@ function onKey(e) {
               <UiBadge :tone="listing.status === 'active' ? 'success' : 'neutral'" dot>
                 {{ listing.status === 'active' ? 'Available' : listing.status === 'sold' ? 'Sold' : 'Hidden' }}
               </UiBadge>
-              <UiButton variant="ghost" size="sm" :icon="Share2" icon-only aria-label="Share listing" @click="share" />
+              <div class="row" style="--gap: 2px">
+                <UiButton
+                  v-if="!listing.isMine"
+                  variant="ghost"
+                  size="sm"
+                  :icon="Flag"
+                  icon-only
+                  aria-label="Report listing"
+                  title="Report listing"
+                  @click="reportOpen = true"
+                />
+                <UiButton variant="ghost" size="sm" :icon="Share2" icon-only aria-label="Share listing" @click="share" />
+              </div>
             </div>
             <p class="price">{{ listing.price ? formatMoney(listing.price, listing.currency) : 'Free' }}</p>
             <p v-if="listing.negotiable" class="nego">Price negotiable</p>
@@ -300,6 +315,14 @@ function onKey(e) {
         <UiButton variant="danger" class="grow" :icon="Trash2" :loading="busy === 'delete'" @click="remove">Delete</UiButton>
       </template>
     </UiSheet>
+
+    <ReportDialog
+      v-if="listing && !listing.isMine"
+      v-model:open="reportOpen"
+      target-type="listing"
+      :target-id="listing.id"
+      :target-label="`“${listing.title}”`"
+    />
   </div>
 </template>
 

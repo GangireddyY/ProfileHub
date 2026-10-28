@@ -2,9 +2,11 @@ import { defineStore } from 'pinia';
 import { ref, reactive, shallowRef } from 'vue';
 import { io } from 'socket.io-client';
 import { toast } from '@/composables/useToast';
+import { getSlot } from '@/api/http';
 import { useAuthStore } from './auth';
 import { useChatStore } from './chat';
 import { useProfessionsStore } from './professions';
+import { t } from '@/i18n';
 
 export const useRealtimeStore = defineStore('realtime', () => {
   const socket = shallowRef(null);
@@ -16,12 +18,13 @@ export const useRealtimeStore = defineStore('realtime', () => {
 
   function connect() {
     const auth = useAuthStore();
-    if (!auth.token || socket.value) return;
+    if (!auth.user || socket.value) return;
     const chat = useChatStore();
 
     const s = io(import.meta.env.VITE_SOCKET_URL || undefined, {
-      // Evaluated on every (re)connect so a rotated token is always used.
-      auth: (cb) => cb({ token: useAuthStore().token }),
+      // The session cookie authenticates; the slot says which of this browser's sessions this tab uses.
+      withCredentials: true,
+      auth: (cb) => cb({ slot: getSlot() }),
       reconnectionDelayMax: 8000,
     });
     const isCurrent = () => socket.value === s;
@@ -50,22 +53,24 @@ export const useRealtimeStore = defineStore('realtime', () => {
     });
 
     s.on('message:new', (m) => chat.receive(m));
+    s.on('message:updated', (m) => chat.applyUpdate(m));
+    s.on('conversation:cleared', (e) => chat.onCleared(e));
     s.on('message:read', (e) => chat.onRead(e));
     s.on('message:read-self', (e) => chat.onReadSelf(e));
     s.on('typing', (e) => chat.setTyping(e.from, e.typing));
 
     s.on('connection:request', ({ user }) => {
-      toast.info(`${user.name} wants to join your network`, {
-        title: 'New invitation',
+      toast.info(t('toast.invitation', { name: user.name }), {
+        title: t('toast.invitationTitle'),
         avatar: user,
-        action: { label: 'Review', to: '/network' },
+        action: { label: t('common.review'), to: '/network' },
       });
     });
     s.on('connection:accepted', ({ user }) => {
-      toast.success(`${user.name} accepted your invitation`, {
-        title: 'New connection',
+      toast.success(t('toast.accepted', { name: user.name }), {
+        title: t('toast.acceptedTitle'),
         avatar: user,
-        action: { label: 'Message', to: `/messages/${user.id}` },
+        action: { label: t('common.message'), to: `/messages/${user.id}` },
       });
     });
     s.on('notification:new', ({ notification } = {}) => {
@@ -99,7 +104,39 @@ export const useRealtimeStore = defineStore('realtime', () => {
         toast.info(`${actor.name} asked for a new profession`, {
           title: 'New profession request',
           avatar: actor,
-          action: { label: 'Review', to: '/admin' },
+          action: { label: 'Review', to: '/admin?tab=requests' },
+        });
+      } else if (notification?.type === 'signup_request' && actor) {
+        toast.info(`${actor.name} signed up and is waiting for approval`, {
+          title: 'New member to approve',
+          avatar: actor,
+          action: { label: 'Review', to: '/admin?tab=approvals' },
+        });
+      } else if (notification?.type === 'report_new' && actor) {
+        toast.info(`${actor.name} reported something for review`, {
+          title: 'New report',
+          avatar: actor,
+          action: { label: 'Review', to: '/admin?tab=reports' },
+        });
+      } else if (notification?.type === 'listing_removed') {
+        toast.error(`An admin ${notification.data?.action === 'deleted' ? 'removed' : 'hid'} your listing “${notification.data?.title ?? ''}”.`, {
+          title: 'Listing moderated',
+          action: { label: 'View', to: '/notifications' },
+        });
+      } else if (notification?.type === 'review_new' && actor) {
+        auth.fetchMe().catch(() => {});
+        toast.success(t('toast.reviewNew', { name: actor.name, rating: notification.data?.rating ?? '' }), {
+          title: t('toast.reviewNewTitle'),
+          avatar: actor,
+          action: { label: t('common.view'), to: `/u/${auth.user?.id}` },
+        });
+      } else if (notification?.type === 'plan_expiring') {
+        toast.info(`Your ${notification.data?.planName ?? ''} plan ends soon.`, { title: 'Plan ending', action: { label: 'Plans', to: '/plans' } });
+      } else if (notification?.type === 'plan_expired') {
+        auth.fetchMe().catch(() => {});
+        toast.info(`Your ${notification.data?.planName ?? ''} plan ended, so you're back on ${notification.data?.fallbackName ?? 'the free plan'}.`, {
+          title: 'Plan ended',
+          action: { label: 'Plans', to: '/plans' },
         });
       }
     });

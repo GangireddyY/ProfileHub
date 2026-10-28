@@ -3,6 +3,8 @@ import { sequelize } from '../config/db.js';
 import { RATE_UNITS, CURRENCIES } from '../constants/professions.js';
 
 export const ROLES = ['member', 'admin'];
+export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'];
+export const LANGUAGES = ['en', 'hi', 'kn', 'te', 'ta', 'ml'];
 
 export class User extends Model {
   get isAdmin() {
@@ -11,6 +13,11 @@ export class User extends Model {
 
   get visiblyOnline() {
     return Boolean(this.showOnlineStatus && this.isOnline);
+  }
+
+  /** Can sign in and appear to other members. */
+  get isActiveMember() {
+    return this.approvalStatus === 'approved' && !this.suspendedAt;
   }
 
   get hasLocation() {
@@ -104,6 +111,21 @@ User.init(
     planExpiresAt: { type: DataTypes.DATE, allowNull: true },
     /** Set by an admin; suspended accounts cannot sign in and are hidden from Discover and search. */
     suspendedAt: { type: DataTypes.DATE, allowNull: true },
+    /** New sign-ups wait for an admin; only approved accounts can sign in. */
+    approvalStatus: {
+      type: DataTypes.STRING(16),
+      allowNull: false,
+      defaultValue: 'pending',
+      validate: { isIn: [APPROVAL_STATUSES] },
+    },
+    approvalNote: { type: DataTypes.STRING(300), allowNull: false, defaultValue: '' },
+    /** When the "plan ends soon" reminder went out for the current plan period. */
+    planReminderAt: { type: DataTypes.DATE, allowNull: true },
+    /** Set when the member opens the link we emailed to their sign-in address. */
+    emailVerifiedAt: { type: DataTypes.DATE, allowNull: true },
+    language: { type: DataTypes.STRING(8), allowNull: false, defaultValue: 'en', validate: { isIn: [LANGUAGES] } },
+    /** { email: { network, messages, plans, account, admin }, push: { ... } }; missing keys mean "on". */
+    notifyPrefs: { type: DataTypes.JSON, allowNull: true },
   },
   {
     sequelize,

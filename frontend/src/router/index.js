@@ -1,4 +1,6 @@
+import { watch } from 'vue';
 import { createRouter, createWebHistory } from 'vue-router';
+import { i18n, t } from '@/i18n';
 import { useAuthStore } from '@/stores/auth';
 import { useProfessionsStore } from '@/stores/professions';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -102,6 +104,31 @@ const routes = [
         component: () => import('@/views/SignupView.vue'),
         meta: { title: 'Create account' },
       },
+      {
+        path: 'forgot-password',
+        name: 'forgot-password',
+        component: () => import('@/views/ForgotPasswordView.vue'),
+        meta: { title: 'Forgot password' },
+      },
+    ],
+  },
+  // Links from emails: they work whether or not this tab is signed in.
+  {
+    path: '/',
+    component: AuthLayout,
+    children: [
+      {
+        path: 'reset-password',
+        name: 'reset-password',
+        component: () => import('@/views/ResetPasswordView.vue'),
+        meta: { title: 'Choose a new password' },
+      },
+      {
+        path: 'verify-email',
+        name: 'verify-email',
+        component: () => import('@/views/VerifyEmailView.vue'),
+        meta: { title: 'Confirm your email' },
+      },
     ],
   },
   // Readable whether or not you are signed in.
@@ -143,8 +170,20 @@ router.beforeEach(async (to) => {
   }
 });
 
+const te = (key) => i18n.global.te(key, 'en');
+
+function pageTitle(route) {
+  const key = `title.${String(route.name)}`;
+  const translated = route.name && te(key) ? t(key) : route.meta.title;
+  return translated ? `${translated} · ProfileHUB` : 'ProfileHUB';
+}
+
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · ProfileHUB` : 'ProfileHUB';
+  document.title = pageTitle(to);
+});
+
+watch(i18n.global.locale, () => {
+  document.title = pageTitle(router.currentRoute.value);
 });
 
 export default router;

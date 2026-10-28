@@ -29,11 +29,14 @@ router.get('/', async (req, res) => {
     order: [['createdAt', 'DESC']],
     limit: limit + 1,
   });
-  const page = rows.slice(0, limit).filter((n) => n.actor);
-  const actors = await decorateUsers(
+  // System notices have no actor; notices whose actor was deleted are dropped.
+  const page = rows.slice(0, limit).filter((n) => n.actor || !n.actorId);
+  const decorated = await decorateUsers(
     me,
-    page.map((n) => n.actor),
+    page.filter((n) => n.actor).map((n) => n.actor),
   );
+  const actorById = new Map(decorated.map((u) => [u.id, u]));
+  const actors = page.map((n) => (n.actor ? actorById.get(n.actor.id) : null));
 
   const requestIds = page.filter((n) => n.type.startsWith('profession_') && n.entityId).map((n) => n.entityId);
   const [requests, professions] = requestIds.length
@@ -49,6 +52,11 @@ router.get('/', async (req, res) => {
   const planRequestMap = new Map(planRequests.map((r) => [r.id, r]));
 
   const metaFor = (n) => {
+    // Plan and profession decisions read the live request instead, so the status shown is always current.
+    const fromRequest = n.type.startsWith('profession_') || ['plan_request', 'plan_approved', 'plan_rejected'].includes(n.type);
+    if (n.data && !fromRequest) {
+      return typeof n.data === 'string' ? JSON.parse(n.data) : n.data;
+    }
     if (n.type.startsWith('plan_')) {
       const pr = planRequestMap.get(n.entityId);
       return pr

@@ -1,6 +1,22 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { Bell, BellRing, UserPlus, UserCheck, CheckCheck, BriefcaseBusiness, CircleCheck, CircleX, Crown } from 'lucide-vue-next';
+import {
+  Bell,
+  BellRing,
+  UserPlus,
+  UserCheck,
+  CheckCheck,
+  BriefcaseBusiness,
+  CircleCheck,
+  CircleX,
+  Crown,
+  Flag,
+  TriangleAlert,
+  Hourglass,
+  Star,
+} from 'lucide-vue-next';
+import { useI18n } from 'vue-i18n';
+import { formatDate } from '@/constants/plans';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -25,15 +41,24 @@ const loading = ref(true);
 const loadingMore = ref(false);
 const filter = ref('all');
 
+const { t } = useI18n();
+const T = (key, params) => t(`notifications.text.${key}`, params);
 const TEXT = {
-  connection_request: () => 'wants to join your network',
-  connection_accepted: () => 'accepted your invitation. Say hello!',
-  profession_request: (m) => `asked to add “${m?.label ?? 'a profession'}” to the profession list`,
-  profession_approved: (m) => `approved your request. “${m?.professionLabel ?? m?.label}” is now in the profession list`,
-  profession_rejected: (m) => `declined your request for “${m?.label ?? 'a profession'}”`,
-  plan_request: (m) => `asked to move to the ${m?.planName ?? 'a new'} plan`,
-  plan_approved: (m) => `approved your request. You're now on the ${m?.planName ?? 'new'} plan`,
-  plan_rejected: (m) => `declined your request for the ${m?.planName ?? ''} plan`,
+  connection_request: () => T('connection_request'),
+  connection_accepted: () => T('connection_accepted'),
+  profession_request: (m) => T('profession_request', { label: m?.label ?? '' }),
+  profession_approved: (m) => T('profession_approved', { label: m?.professionLabel ?? m?.label ?? '' }),
+  profession_rejected: (m) => T('profession_rejected', { label: m?.label ?? '' }),
+  plan_request: (m) => T('plan_request', { plan: m?.planName ?? '' }),
+  plan_approved: (m) => T('plan_approved', { plan: m?.planName ?? '' }),
+  plan_rejected: (m) => T('plan_rejected', { plan: m?.planName ?? '' }),
+  signup_request: () => T('signup_request'),
+  account_approved: () => T('account_approved'),
+  report_new: (m) => T('report_new', { target: t(`notifications.target.${m?.targetType || 'user'}`) }),
+  listing_removed: (m) => T(m?.action === 'deleted' ? 'listing_removed_deleted' : 'listing_removed_hidden', { title: m?.title ?? '' }),
+  plan_expiring: (m) => T('plan_expiring', { plan: m?.planName ?? '', date: m?.endsAt ? formatDate(m.endsAt) : '' }),
+  plan_expired: (m) => T('plan_expired', { plan: m?.planName ?? '', fallback: m?.fallbackName ?? '' }),
+  review_new: (m) => T('review_new', { rating: m?.rating ?? '' }),
 };
 const ICON = {
   connection_request: UserPlus,
@@ -44,27 +69,40 @@ const ICON = {
   plan_request: Crown,
   plan_approved: CircleCheck,
   plan_rejected: CircleX,
+  signup_request: UserPlus,
+  account_approved: CircleCheck,
+  report_new: Flag,
+  listing_removed: TriangleAlert,
+  plan_expiring: Hourglass,
+  plan_expired: Crown,
+  review_new: Star,
 };
 const isProfession = (n) => n.type.startsWith('profession_');
 const isPlan = (n) => n.type.startsWith('plan_');
 
 const filters = computed(() => [
-  { key: 'all', label: 'All', icon: BellRing, count: items.value.length },
+  { key: 'all', label: t('notifications.all'), icon: BellRing, count: items.value.length },
   {
     key: 'connection_request',
-    label: 'Invitations',
+    label: t('notifications.invitations'),
     icon: UserPlus,
     count: items.value.filter((n) => n.type === 'connection_request').length,
   },
   {
     key: 'connection_accepted',
-    label: 'Accepted',
+    label: t('notifications.accepted'),
     icon: UserCheck,
     count: items.value.filter((n) => n.type === 'connection_accepted').length,
   },
   {
+    key: 'review_new',
+    label: t('notifications.reviews'),
+    icon: Star,
+    count: items.value.filter((n) => n.type === 'review_new').length,
+  },
+  {
     key: 'profession',
-    label: 'Professions',
+    label: t('notifications.professions'),
     icon: BriefcaseBusiness,
     count: items.value.filter(isProfession).length,
   },
@@ -131,11 +169,11 @@ watch(
         <header class="filters__head">
           <span class="filters__icon"><Bell /></span>
           <div>
-            <strong>Notifications</strong>
-            <p class="muted">{{ items.length }} recent</p>
+            <strong>{{ t('notifications.title') }}</strong>
+            <p class="muted">{{ t('notifications.recent', { n: items.length }) }}</p>
           </div>
         </header>
-        <nav class="filters__nav" aria-label="Filter notifications">
+        <nav class="filters__nav" :aria-label="t('notifications.filterLabel')">
           <button
             v-for="f in filters"
             :key="f.key"
@@ -155,8 +193,8 @@ watch(
       <BackButton />
       <header class="page-head">
         <div>
-          <h1 class="page-title">Notifications</h1>
-          <p class="muted">Invitations and updates from your network.</p>
+          <h1 class="page-title">{{ t('notifications.title') }}</h1>
+          <p class="muted">{{ t('notifications.lead') }}</p>
         </div>
       </header>
 
@@ -176,47 +214,63 @@ watch(
         <UiEmpty
           v-else-if="!visible.length"
           :icon="Bell"
-          :title="items.length ? 'Nothing in this filter' : 'You\'re all caught up'"
-          description="Invitations, accepted requests and profession updates will show up here."
+          :title="items.length ? t('notifications.emptyFilter') : t('notifications.caughtUp')"
+          :description="t('notifications.emptyText')"
         >
-          <UiButton to="/" variant="soft">Discover people</UiButton>
+          <UiButton to="/" variant="soft">{{ t('common.discoverPeople') }}</UiButton>
         </UiEmpty>
 
         <TransitionGroup v-else name="list" tag="ul" class="list">
           <li v-for="n in visible" :key="n.id" class="item" :class="{ 'is-unread': !n.readAt }">
-            <RouterLink :to="`/u/${n.actor.id}`" class="item__avatar">
-              <UiAvatar :name="n.actor.name" :src="n.actor.avatarUrl" :size="52" />
-              <span class="item__type" :class="`item__type--${n.type}`"><component :is="ICON[n.type]" /></span>
-            </RouterLink>
+            <component :is="n.actor ? 'RouterLink' : 'span'" :to="n.actor ? `/u/${n.actor.id}` : undefined" class="item__avatar">
+              <UiAvatar :name="n.actor?.name || 'ProfileHUB'" :src="n.actor?.avatarUrl || '/favicon.svg'" :size="52" />
+              <span class="item__type" :class="`item__type--${n.type}`"><component :is="ICON[n.type] || Bell" /></span>
+            </component>
 
             <div class="item__body">
               <p class="item__text">
-                <RouterLink :to="`/u/${n.actor.id}`" class="item__name">{{ n.actor.name }}</RouterLink>
+                <RouterLink v-if="n.actor" :to="`/u/${n.actor.id}`" class="item__name">{{ n.actor.name }}</RouterLink>
+                <strong v-else class="item__name">ProfileHUB</strong>
                 {{ TEXT[n.type]?.(n.meta) }}
               </p>
               <p v-if="n.type === 'profession_rejected' && n.meta?.reviewNote" class="item__note">“{{ n.meta.reviewNote }}”</p>
               <p v-else-if="isPlan(n) && n.type !== 'plan_request' && n.meta?.reviewNote" class="item__note">“{{ n.meta.reviewNote }}”</p>
               <p v-else-if="n.type === 'plan_request' && n.meta?.message" class="item__note">“{{ n.meta.message }}”</p>
+              <p v-else-if="n.type === 'listing_removed' && n.meta?.reason" class="item__note">{{ t('notifications.reason', { reason: n.meta.reason }) }}</p>
+              <p v-else-if="n.type === 'review_new' && n.meta?.comment" class="item__note">“{{ n.meta.comment }}”</p>
               <div class="row wrap item__meta" style="--gap: 8px">
-                <ProfessionBadge :profession="n.actor.profession" size="sm" />
+                <ProfessionBadge v-if="n.actor" :profession="n.actor.profession" size="sm" />
                 <span class="subtle">{{ timeAgo(n.createdAt) }}</span>
               </div>
             </div>
 
             <div class="item__actions">
-              <template v-if="isProfession(n)">
+              <UiButton v-if="n.type === 'signup_request'" size="sm" :to="{ path: '/admin', query: { tab: 'approvals' } }">{{ t('common.review') }}</UiButton>
+              <UiButton v-else-if="n.type === 'report_new'" size="sm" :to="{ path: '/admin', query: { tab: 'reports' } }">{{ t('common.review') }}</UiButton>
+              <UiButton v-else-if="n.type === 'account_approved'" size="sm" variant="soft" to="/welcome">{{ t('notifications.setupProfile') }}</UiButton>
+              <UiButton v-else-if="n.type === 'review_new'" size="sm" variant="soft" :to="{ path: `/u/${auth.user.id}`, hash: '#reviews' }">
+                {{ t('notifications.seeReviews') }}
+              </UiButton>
+              <UiButton v-else-if="n.type === 'listing_removed'" size="sm" variant="ghost" :to="{ path: '/market', query: { tab: 'mine' } }">
+                {{ t('nav.myListings') }}
+              </UiButton>
+              <UiButton v-else-if="n.type === 'plan_expiring' || n.type === 'plan_expired'" size="sm" variant="soft" to="/plans">
+                {{ t('common.viewPlans') }}
+              </UiButton>
+              <template v-else-if="!n.actor" />
+              <template v-else-if="isProfession(n)">
                 <UiButton
                   v-if="n.type === 'profession_request'"
                   size="sm"
                   :variant="n.meta?.status === 'pending' ? 'primary' : 'ghost'"
                   to="/admin"
                 >
-                  {{ n.meta?.status === 'pending' ? 'Review' : 'Reviewed' }}
+                  {{ n.meta?.status === 'pending' ? t('common.review') : t('common.reviewed') }}
                 </UiButton>
                 <UiButton v-else-if="n.type === 'profession_approved'" size="sm" variant="soft" to="/settings#profile">
-                  View profile
+                  {{ t('common.viewProfile') }}
                 </UiButton>
-                <UiButton v-else size="sm" variant="ghost" to="/settings#profile">Pick another</UiButton>
+                <UiButton v-else size="sm" variant="ghost" to="/settings#profile">{{ t('notifications.pickAnother') }}</UiButton>
               </template>
               <template v-else-if="isPlan(n)">
                 <UiButton
@@ -225,9 +279,9 @@ watch(
                   :variant="n.meta?.status === 'pending' ? 'primary' : 'ghost'"
                   :to="{ path: '/admin', query: { tab: 'plan-requests' } }"
                 >
-                  {{ n.meta?.status === 'pending' ? 'Review' : 'Reviewed' }}
+                  {{ n.meta?.status === 'pending' ? t('common.review') : t('common.reviewed') }}
                 </UiButton>
-                <UiButton v-else size="sm" :variant="n.type === 'plan_approved' ? 'soft' : 'ghost'" to="/plans">View plans</UiButton>
+                <UiButton v-else size="sm" :variant="n.type === 'plan_approved' ? 'soft' : 'ghost'" to="/plans">{{ t('common.viewPlans') }}</UiButton>
               </template>
               <ConnectButton
                 v-else-if="n.type === 'connection_request' && n.actor.connectionStatus !== 'none'"
@@ -235,21 +289,21 @@ watch(
                 size="sm"
                 @change="onStatusChange(n, $event)"
               />
-              <span v-else-if="n.type === 'connection_request'" class="subtle handled"><CheckCheck /> Handled</span>
+              <span v-else-if="n.type === 'connection_request'" class="subtle handled"><CheckCheck /> {{ t('notifications.handled') }}</span>
               <UiButton
                 v-else-if="n.actor.connectionStatus === 'connected'"
                 size="sm"
                 variant="soft"
                 :to="`/messages/${n.actor.id}`"
               >
-                Message
+                {{ t('common.message') }}
               </UiButton>
             </div>
           </li>
         </TransitionGroup>
 
         <div v-if="hasMore" class="more">
-          <UiButton variant="ghost" :loading="loadingMore" @click="loadMore">Load older notifications</UiButton>
+          <UiButton variant="ghost" :loading="loadingMore" @click="loadMore">{{ t('notifications.loadOlder') }}</UiButton>
         </div>
       </UiCard>
     </section>
@@ -359,17 +413,26 @@ watch(
 .item__type--connection_request {
   background: var(--primary);
 }
+.item__type--review_new {
+  background: #f59e0b;
+}
 .item__type--connection_accepted,
 .item__type--profession_approved,
-.item__type--plan_approved {
+.item__type--plan_approved,
+.item__type--account_approved {
   background: var(--success);
 }
 .item__type--profession_request,
-.item__type--plan_request {
+.item__type--plan_request,
+.item__type--signup_request,
+.item__type--plan_expiring {
   background: var(--warning);
 }
 .item__type--profession_rejected,
-.item__type--plan_rejected {
+.item__type--plan_rejected,
+.item__type--report_new,
+.item__type--listing_removed,
+.item__type--plan_expired {
   background: var(--danger);
 }
 .item__note {

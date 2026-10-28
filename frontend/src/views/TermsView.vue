@@ -8,6 +8,7 @@ const sections = [
   { id: 'guidelines', label: 'Community guidelines' },
   { id: 'misuse', label: 'Misusing profiles and data' },
   { id: 'chat', label: 'Chatting' },
+  { id: 'reviews', label: 'Reviews' },
   { id: 'market', label: 'Marketplace rules' },
   { id: 'work', label: 'Hiring and work' },
   { id: 'safety', label: 'Safety tips' },
@@ -27,6 +28,7 @@ const sections = [
     <h2 id="account">Your account</h2>
     <ul>
       <li>You must be at least 18 and use your real name and real details.</li>
+      <li>New accounts are reviewed by an admin before you can sign in. We may decline sign-ups that look fake or break these terms.</li>
       <li>One person, one account. Don't create accounts for others or share your sign-in.</li>
       <li>You are responsible for everything done from your account. Keep your password private.</li>
     </ul>
@@ -61,9 +63,17 @@ const sections = [
     <h2 id="chat">Chatting</h2>
     <ul>
       <li>Keep conversations about work, services or the item being sold.</li>
-      <li>If someone isn't interested, stop messaging them.</li>
+      <li>If someone isn't interested, stop messaging them. Anyone can <strong>block</strong> you from their profile or chat.</li>
       <li>Never ask anyone for OTPs, passwords, PINs, card or bank details, Aadhaar or PAN numbers.</li>
       <li>Don't send links to unknown apps, "verification" pages or payment requests.</li>
+      <li>Only send photos you have the right to share. Never send intimate, violent or other people's private photos.</li>
+    </ul>
+
+    <h2 id="reviews">Reviews</h2>
+    <ul>
+      <li>Only review people you have actually worked with, hired, bought from or sold to, and describe your own experience.</li>
+      <li>Don't offer or ask for money, discounts or favours in exchange for reviews, and don't review yourself through another account.</li>
+      <li>Fake, abusive or threatening reviews are removed, and the accounts behind them can be suspended.</li>
     </ul>
 
     <h2 id="market">Marketplace rules</h2>
@@ -114,11 +124,12 @@ const sections = [
     <h2 id="enforcement">What happens if rules are broken</h2>
     <p>Depending on how serious it is, admins may:</p>
     <ul>
-      <li>warn you or remove the content (for example a listing or photo),</li>
+      <li>warn you, or hide or delete the content (for example a listing), telling you why,</li>
       <li><strong>suspend</strong> your account, which signs you out and hides you from Discover and search,</li>
       <li><strong>permanently delete</strong> your account, and</li>
       <li>report threats, fraud, exploitation or other crimes to the police.</li>
     </ul>
+    <p>You are emailed when your account is suspended or reactivated. Every admin action is recorded in an internal log, so decisions can be checked later.</p>
 
     <h2 id="plans">Plans</h2>
     <p>
@@ -134,10 +145,17 @@ const sections = [
     </p>
 
     <h2 id="contact">Reporting and contact</h2>
-    <p>
-      To report a profile, message, listing or misuse of your information, email
-      <a :href="`mailto:${SUPPORT_EMAIL}`">{{ SUPPORT_EMAIL }}</a> with the member's name and what happened. See our
-      <RouterLink to="/privacy">Privacy policy</RouterLink> for how we handle your data.
-    </p>
+    <ul>
+      <li>
+        <strong>Report</strong> a profile, listing or conversation from its menu (the flag or "⋯" button). Reports are private: the
+        member isn't told who reported them. Admins review every report.
+      </li>
+      <li><strong>Block</strong> a member to stop all contact both ways; you can unblock them later in Settings.</li>
+      <li>
+        For anything else, or misuse of your information outside ProfileHUB, email
+        <a :href="`mailto:${SUPPORT_EMAIL}`">{{ SUPPORT_EMAIL }}</a> with the member's name and what happened.
+      </li>
+    </ul>
+    <p>See our <RouterLink to="/privacy">Privacy policy</RouterLink> for how we handle your data.</p>
   </LegalPage>
 </template>

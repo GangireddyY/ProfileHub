@@ -1,7 +1,23 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
-import { Search, Users, ShieldHalf, Ban, ChevronLeft, ChevronRight, Crown } from 'lucide-vue-next';
+import { ref, computed, watch, onMounted } from 'vue';
+import {
+  Search,
+  Users,
+  ShieldHalf,
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  Crown,
+  Hourglass,
+  Download,
+  Check,
+  X,
+  RotateCcw,
+  Trash2,
+  MailCheck,
+} from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
+import { downloadFromApi } from '@/utils/download';
 import { toast } from '@/composables/useToast';
 import { timeAgo } from '@/utils/format';
 import { formatDate } from '@/constants/plans';
@@ -14,10 +30,14 @@ import UiSelect from '@/components/ui/UiSelect.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import AdminUserSheet from './AdminUserSheet.vue';
 
-const props = defineProps({ plans: { type: Array, default: () => [] } });
+const props = defineProps({
+  plans: { type: Array, default: () => [] },
+  /** e.g. 'pending' for the Approvals tab. */
+  initialStatus: { type: String, default: 'all' },
+});
 const emit = defineEmits(['changed']);
 
-const filters = ref({ q: '', role: 'all', status: 'all', plan: 'all', sort: 'newest' });
+const filters = ref({ q: '', role: 'all', status: props.initialStatus, plan: 'all', sort: props.initialStatus === 'pending' ? 'oldest' : 'newest' });
 const items = ref([]);
 const total = ref(0);
 const page = ref(1);
@@ -31,8 +51,10 @@ const ROLE_OPTIONS = [
 ];
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Any status' },
+  { value: 'pending', label: 'Waiting for approval' },
   { value: 'active', label: 'Active' },
   { value: 'suspended', label: 'Suspended' },
+  { value: 'rejected', label: 'Declined' },
 ];
 const SORT_OPTIONS = [
   { value: 'newest', label: 'Newest first' },
@@ -92,6 +114,85 @@ function onDeleted() {
   load();
   emit('changed');
 }
+
+// ---------- Selection & bulk actions ----------
+const selected = ref(new Set());
+const allSelected = computed(() => items.value.length > 0 && items.value.every((u) => selected.value.has(u.id)));
+watch(items, (list) => {
+  const visible = new Set(list.map((u) => u.id));
+  selected.value = new Set([...selected.value].filter((id) => visible.has(id)));
+});
+function toggle(id) {
+  const next = new Set(selected.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  selected.value = next;
+}
+function toggleAll() {
+  selected.value = allSelected.value ? new Set() : new Set(items.value.map((u) => u.id));
+}
+
+const bulkBusy = ref(false);
+const bulkPlan = ref('');
+const BULK_LABELS = {
+  approve: 'Approve',
+  reject: 'Decline',
+  suspend: 'Suspend',
+  reactivate: 'Reactivate',
+  plan: 'Change plan of',
+  delete: 'Permanently delete',
+};
+
+async function runBulk(action) {
+  const ids = [...selected.value];
+  if (!ids.length) return;
+  const count = `${ids.length} account${ids.length === 1 ? '' : 's'}`;
+  const payload = { ids, action };
+  if (action === 'plan') {
+    if (!bulkPlan.value) return;
+    payload.planId = bulkPlan.value === 'default' ? null : bulkPlan.value;
+  }
+  if (action === 'reject') {
+    const note = window.prompt(`Decline ${count}? Optional note for the members:`, '');
+    if (note === null) return;
+    payload.note = note;
+  } else if (action === 'delete') {
+    if (window.prompt(`Permanently delete ${count} and everything they own? Type DELETE to confirm.`) !== 'DELETE') return;
+  } else if (!window.confirm(`${BULK_LABELS[action]} ${count}?`)) {
+    return;
+  }
+  bulkBusy.value = true;
+  try {
+    const { data } = await api.post('/admin/users/bulk', payload);
+    if (data.done) toast.success(`${BULK_LABELS[action]}: ${data.done} done`);
+    if (data.failed.length) {
+      toast.error(data.failed.map((f) => `${f.name}: ${f.message}`).slice(0, 4).join(' · '), {
+        title: `${data.failed.length} could not be changed`,
+      });
+    }
+    selected.value = new Set();
+    bulkPlan.value = '';
+    load();
+    emit('changed');
+  } catch (err) {
+    toast.error(errorMessage(err));
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+const exporting = ref(false);
+async function exportCsv() {
+  exporting.value = true;
+  try {
+    const { q, role, status, plan, sort } = filters.value;
+    await downloadFromApi('/admin/users/export.csv', { q: q || undefined, role, status, plan, sort }, 'profilehub-users.csv');
+  } catch (err) {
+    toast.error(errorMessage(err));
+  } finally {
+    exporting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -107,26 +208,68 @@ function onDeleted() {
       <UiSelect v-model="filters.sort" :options="SORT_OPTIONS" aria-label="Sort" />
     </div>
 
-    <p class="muted results"><strong>{{ total }}</strong> {{ total === 1 ? 'account' : 'accounts' }}</p>
+    <div class="results">
+      <p class="muted"><strong>{{ total }}</strong> {{ total === 1 ? 'account' : 'accounts' }}</p>
+      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">Export CSV</UiButton>
+    </div>
+
+    <Transition name="fade">
+      <div v-if="selected.size" class="bulk" role="toolbar" aria-label="Bulk actions">
+        <strong>{{ selected.size }} selected</strong>
+        <UiButton size="sm" variant="soft" :icon="Check" :loading="bulkBusy" @click="runBulk('approve')">Approve</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="X" :disabled="bulkBusy" @click="runBulk('reject')">Decline</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="Ban" :disabled="bulkBusy" @click="runBulk('suspend')">Suspend</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="RotateCcw" :disabled="bulkBusy" @click="runBulk('reactivate')">Reactivate</UiButton>
+        <span class="bulk__plan">
+          <UiSelect
+            v-model="bulkPlan"
+            :options="[{ value: '', label: 'Change plan…' }, { value: 'default', label: 'Default plan' }, ...plans.map((p) => ({ value: p.id, label: p.name }))]"
+            aria-label="Plan for the selected accounts"
+          />
+          <UiButton size="sm" variant="secondary" :icon="Crown" :disabled="!bulkPlan || bulkBusy" @click="runBulk('plan')">Apply</UiButton>
+        </span>
+        <UiButton size="sm" variant="danger" :icon="Trash2" :disabled="bulkBusy" @click="runBulk('delete')">Delete</UiButton>
+        <button type="button" class="bulk__clear" aria-label="Clear selection" @click="selected = new Set()"><X /></button>
+      </div>
+    </Transition>
 
     <div v-if="loading && !items.length" class="stack" style="--gap: 8px">
       <UiSkeleton v-for="i in 6" :key="i" height="64px" />
     </div>
 
     <UiCard v-else-if="!items.length">
-      <UiEmpty :icon="Users" title="No accounts match" description="Try another search or clear the filters." />
+      <UiEmpty
+        :icon="Users"
+        :title="filters.status === 'pending' ? 'Nobody is waiting for approval' : 'No accounts match'"
+        :description="filters.status === 'pending' ? 'New sign-ups appear here until an admin approves or declines them.' : 'Try another search or clear the filters.'"
+      />
     </UiCard>
 
     <UiCard v-else :padded="false" class="table-card" :class="{ 'is-loading': loading }">
       <div class="table" role="table" aria-label="Users">
         <div class="row row--head" role="row">
+          <span role="columnheader" class="pick">
+            <input type="checkbox" :checked="allSelected" aria-label="Select all on this page" @change="toggleAll" />
+          </span>
           <span role="columnheader">Member</span>
           <span role="columnheader">Status</span>
           <span role="columnheader">Plan</span>
           <span role="columnheader" class="hide-sm">Activity</span>
           <span role="columnheader" class="hide-md">Joined</span>
         </div>
-        <button v-for="u in items" :key="u.id" type="button" class="row" role="row" @click="open(u)">
+        <div
+          v-for="u in items"
+          :key="u.id"
+          class="row row--item"
+          :class="{ 'is-selected': selected.has(u.id) }"
+          role="row"
+          tabindex="0"
+          @click="open(u)"
+          @keydown.enter="open(u)"
+        >
+          <span class="pick" role="cell" @click.stop>
+            <input type="checkbox" :checked="selected.has(u.id)" :aria-label="`Select ${u.name}`" @change="toggle(u.id)" />
+          </span>
           <span class="who" role="cell">
             <UiAvatar :name="u.name" :src="u.avatarUrl" :size="38" :online="u.isOnline && !u.suspendedAt" />
             <span class="who__text">
@@ -134,11 +277,16 @@ function onDeleted() {
                 {{ u.name }}
                 <ShieldHalf v-if="u.role === 'admin'" class="who__admin" aria-label="Admin" />
               </strong>
-              <small class="truncate">{{ u.email }}</small>
+              <small class="truncate">
+                {{ u.email }}
+                <MailCheck v-if="u.emailVerifiedAt" class="who__verified" aria-label="Email confirmed" />
+              </small>
             </span>
           </span>
           <span role="cell">
-            <UiBadge v-if="u.suspendedAt" tone="danger" :icon="Ban">Suspended</UiBadge>
+            <UiBadge v-if="u.approvalStatus === 'pending'" tone="warning" :icon="Hourglass">Waiting</UiBadge>
+            <UiBadge v-else-if="u.approvalStatus === 'rejected'" tone="neutral">Declined</UiBadge>
+            <UiBadge v-else-if="u.suspendedAt" tone="danger" :icon="Ban">Suspended</UiBadge>
             <UiBadge v-else-if="u.role === 'admin'" tone="primary">Admin</UiBadge>
             <UiBadge v-else tone="success">Active</UiBadge>
           </span>
@@ -154,7 +302,7 @@ function onDeleted() {
             <small>{{ u.isOnline ? 'Online now' : u.lastSeenAt ? `Seen ${timeAgo(u.lastSeenAt)}` : 'Never signed in' }}</small>
           </span>
           <span role="cell" class="hide-md subtle">{{ formatDate(u.createdAt) }}</span>
-        </button>
+        </div>
       </div>
     </UiCard>
 
@@ -201,8 +349,80 @@ function onDeleted() {
   border-color: var(--primary);
   box-shadow: var(--ring);
 }
+.results {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
 .results strong {
   color: var(--text);
+}
+.bulk {
+  position: sticky;
+  top: calc(var(--nav-h) + 8px);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: var(--primary-soft);
+  box-shadow: var(--shadow-sm);
+}
+.bulk > strong {
+  margin-right: 4px;
+  font-size: 0.88rem;
+}
+.bulk__plan {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bulk__plan :deep(select) {
+  height: 34px;
+  min-width: 150px;
+}
+.bulk__clear {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+}
+.bulk__clear svg {
+  width: 16px;
+  height: 16px;
+}
+.pick {
+  display: grid;
+  place-items: center;
+}
+.pick input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+.row--item {
+  cursor: pointer;
+}
+.row--item.is-selected {
+  background: var(--primary-soft);
+}
+.who__verified {
+  display: inline;
+  width: 12px;
+  height: 12px;
+  margin-left: 4px;
+  vertical-align: -1px;
+  color: var(--success);
 }
 .table-card {
   overflow: hidden;
@@ -213,7 +433,7 @@ function onDeleted() {
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(0, 2.2fr) 110px minmax(0, 1.2fr);
+  grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr);
   align-items: center;
   gap: 12px;
   width: 100%;
@@ -224,7 +444,7 @@ function onDeleted() {
   text-align: left;
   font-size: 0.88rem;
 }
-button.row:hover {
+.row--item:hover {
   background: var(--surface-2);
 }
 .row--head {
@@ -299,7 +519,7 @@ button.row:hover {
     grid-template-columns: minmax(0, 1fr) repeat(4, 160px);
   }
   .row {
-    grid-template-columns: minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr);
+    grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr);
   }
   .hide-sm {
     display: flex;
@@ -308,7 +528,7 @@ button.row:hover {
 }
 @media (min-width: 1100px) {
   .row {
-    grid-template-columns: minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr) 120px;
+    grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr) 120px;
   }
   .hide-md {
     display: block;

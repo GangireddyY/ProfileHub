@@ -33,8 +33,10 @@ import ProfileCard from '@/components/ProfileCard.vue';
 import FilterPanel from '@/components/FilterPanel.vue';
 import UiSearchSelect from '@/components/ui/UiSearchSelect.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
+import { useI18n } from 'vue-i18n';
 
 const STORAGE_KEY = 'ph_filters';
+const { t } = useI18n();
 const auth = useAuthStore();
 const professions = useProfessionsStore();
 const geo = useGeolocation();
@@ -101,12 +103,12 @@ const categoryGroups = computed(() => {
   return [
     {
       key: 'categories',
-      title: 'Categories',
+      title: t('common.categories'),
       options: professions.categories.map((c) => ({ ...c, meta: perCategory.get(c.key) || 0 })),
     },
     {
       key: 'professions',
-      title: 'Professions',
+      title: t('common.professions'),
       searchOnly: true,
       limit: 40,
       options: active.map((p) => ({ ...p, meta: professions.category(p.category).label })),
@@ -117,7 +119,7 @@ const myRate = computed(() => formatRate(me.value));
 const profileIncomplete = computed(() => me.value?.profession === 'other' && !me.value?.roleTitle);
 const greeting = computed(() => {
   const h = new Date().getHours();
-  return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  return t(h < 12 ? 'discover.greeting.morning' : h < 18 ? 'discover.greeting.afternoon' : 'discover.greeting.evening');
 });
 const myHue = computed(() => getProfession(me.value?.profession).hue);
 
@@ -201,7 +203,7 @@ function resetFilters() {
 
 async function enableLocation() {
   if (await geo.locate()) {
-    toast.success(me.value.city ? `Location set near ${me.value.city}` : 'Location enabled');
+    toast.success(me.value.city ? t('discover.locationNear', { city: me.value.city }) : t('discover.locationOn'));
     if (maxDistance.value == null) filters.value.distanceIdx = stepForRadius(me.value.discoveryRadiusKm);
   } else {
     toast.error(geo.error.value);
@@ -241,23 +243,23 @@ onBeforeUnmount(() => {
         <RouterLink :to="`/u/${me.id}`" class="mini__body">
           <UiAvatar :name="me.name" :src="me.avatarUrl" :size="56" ring class="mini__avatar" />
           <strong class="mini__name">{{ me.name }}</strong>
-          <span class="muted mini__role">{{ me.roleTitle || 'Add your role in settings' }}</span>
+          <span class="muted mini__role">{{ me.roleTitle || t('discover.addRole') }}</span>
           <ProfessionBadge :profession="me.profession" size="sm" />
         </RouterLink>
         <div class="mini__stats">
           <RouterLink to="/network" class="mini__stat">
-            <span><Users /> Connections</span><strong>{{ me.connectionCount }}</strong>
+            <span><Users /> {{ t('discover.connections') }}</span><strong>{{ me.connectionCount }}</strong>
           </RouterLink>
           <RouterLink to="/network" class="mini__stat">
-            <span><Inbox /> Invitations</span><strong :class="{ hot: me.pendingRequests }">{{ me.pendingRequests }}</strong>
+            <span><Inbox /> {{ t('discover.invitations') }}</span><strong :class="{ hot: me.pendingRequests }">{{ me.pendingRequests }}</strong>
           </RouterLink>
           <RouterLink to="/settings#location" class="mini__stat">
-            <span><MapPin /> Location</span>
-            <strong :class="me.hasLocation ? 'ok' : 'off'">{{ me.hasLocation ? me.city || 'On' : 'Off' }}</strong>
+            <span><MapPin /> {{ t('discover.location') }}</span>
+            <strong :class="me.hasLocation ? 'ok' : 'off'">{{ me.hasLocation ? me.city || t('common.on') : t('common.off') }}</strong>
           </RouterLink>
           <RouterLink to="/settings#profile" class="mini__stat">
-            <span><BadgeIndianRupee /> My rate</span>
-            <strong :class="myRate ? 'ok' : 'off'">{{ myRate || 'Not set' }}</strong>
+            <span><BadgeIndianRupee /> {{ t('discover.myRate') }}</span>
+            <strong :class="myRate ? 'ok' : 'off'">{{ myRate || t('common.notSet') }}</strong>
           </RouterLink>
         </div>
       </UiCard>
@@ -277,7 +279,7 @@ onBeforeUnmount(() => {
     <section class="discover__main">
       <header class="hero">
         <p class="muted hero__greet">{{ greeting }}, {{ me.name.split(' ')[0] }} 👋</p>
-        <h1 class="page-title">Discover people &amp; services</h1>
+        <h1 class="page-title">{{ t('discover.title') }}</h1>
       </header>
 
       <div class="page-toolbar">
@@ -286,23 +288,23 @@ onBeforeUnmount(() => {
           <input
             v-model.trim="filters.q"
             type="search"
-            placeholder="Search by name, profession, skill or city"
-            aria-label="Search people"
+            :placeholder="t('discover.searchPlaceholder')"
+            :aria-label="t('discover.searchLabel')"
             enterkeyhint="search"
           />
-          <button v-if="filters.q" type="button" class="searchbar__clear" aria-label="Clear search" @click="filters.q = ''">
+          <button v-if="filters.q" type="button" class="searchbar__clear" :aria-label="t('common.clearSearch')" @click="filters.q = ''">
             <X />
           </button>
         </label>
         <UiSearchSelect
           v-model="categoryFilter"
           :groups="categoryGroups"
-          all-label="All categories"
-          placeholder="Search categories or professions"
+          :all-label="t('common.allCategories')"
+          :placeholder="t('discover.catPlaceholder')"
         />
-        <button type="button" class="filter-btn" aria-label="Open filters" @click="filtersOpen = true">
+        <button type="button" class="filter-btn" :aria-label="t('common.filters')" @click="filtersOpen = true">
           <SlidersHorizontal />
-          <span class="filter-btn__text">Filters</span>
+          <span class="filter-btn__text">{{ t('common.filters') }}</span>
           <span v-if="activeFilterCount" class="filter-btn__count">{{ activeFilterCount }}</span>
         </button>
       </div>
@@ -317,7 +319,7 @@ onBeforeUnmount(() => {
           type="button"
           class="active-filter"
           :style="{ '--hue': c.hue }"
-          :aria-label="`Remove ${c.label} filter`"
+          :aria-label="t('discover.removeFilter', { label: c.label })"
           @click="removeCategory(c.key)"
         >
           <component :is="c.icon" /> {{ c.label }} <X class="active-filter__x" />
@@ -328,52 +330,51 @@ onBeforeUnmount(() => {
           type="button"
           class="active-filter"
           :style="{ '--hue': p.hue }"
-          :aria-label="`Remove ${p.label} filter`"
+          :aria-label="t('discover.removeFilter', { label: p.label })"
           @click="removeProfession(p.key)"
         >
           <component :is="p.icon" /> {{ p.label }} <X class="active-filter__x" />
         </button>
         <button v-if="filters.availableOnly" type="button" class="active-filter" @click="filters.availableOnly = false">
-          Available for work <X class="active-filter__x" />
+          {{ t('discover.available') }} <X class="active-filter__x" />
         </button>
         <button v-if="filters.maxRate != null" type="button" class="active-filter" @click="filters.maxRate = null">
-          Up to {{ formatMoney(filters.maxRate) }} <X class="active-filter__x" />
+          {{ t('common.upTo', { amount: formatMoney(filters.maxRate) }) }} <X class="active-filter__x" />
         </button>
       </div>
 
       <RouterLink v-if="profileIncomplete" to="/welcome" class="setup-banner">
         <span class="setup-banner__icon"><Sparkles /></span>
         <div class="grow">
-          <strong>Finish setting up your profile</strong>
-          <p>Add your profession, rate and photo so people can find and hire you.</p>
+          <strong>{{ t('discover.finishTitle') }}</strong>
+          <p>{{ t('discover.finishText') }}</p>
         </div>
-        <span class="setup-banner__go">Continue <ArrowRight /></span>
+        <span class="setup-banner__go">{{ t('discover.continue') }} <ArrowRight /></span>
       </RouterLink>
 
       <Transition name="fade">
         <div v-if="!me.hasLocation" class="locate-banner">
           <span class="locate-banner__icon"><LocateFixed /></span>
           <div class="grow">
-            <strong>See who's near you</strong>
-            <p class="muted">Share your location to see distances and filter people by range. You can turn it off any time.</p>
+            <strong>{{ t('discover.nearTitle') }}</strong>
+            <p class="muted">{{ t('discover.nearText') }}</p>
           </div>
-          <UiButton size="sm" :loading="geo.loading.value" @click="enableLocation">Enable</UiButton>
+          <UiButton size="sm" :loading="geo.loading.value" @click="enableLocation">{{ t('common.enable') }}</UiButton>
         </div>
       </Transition>
 
       <div class="results-head">
         <p v-if="!loading" class="muted">
-          <strong class="results-count">{{ total }}</strong>
-          {{ total === 1 ? 'person' : 'people' }}
-          <template v-if="meta.distanceApplied"> within {{ maxDistance }} km</template>
-          <template v-if="filters.onlineOnly"> online now</template>
+          <strong class="results-count">{{ t('discover.people', total) }}</strong>
+          <template v-if="meta.distanceApplied"> {{ t('discover.within', { km: maxDistance }) }}</template>
+          <template v-if="filters.onlineOnly"> · {{ t('discover.onlineNow') }}</template>
         </p>
         <UiSkeleton v-else width="160px" height="18px" />
       </div>
 
       <div v-if="error" class="error-box">
         <p>{{ error }}</p>
-        <UiButton size="sm" variant="secondary" @click="load()">Try again</UiButton>
+        <UiButton size="sm" variant="secondary" @click="load()">{{ t('common.tryAgain') }}</UiButton>
       </div>
 
       <div v-else-if="loading" class="grid">
@@ -391,10 +392,10 @@ onBeforeUnmount(() => {
       <UiCard v-else-if="!items.length">
         <UiEmpty
           :icon="SearchX"
-          title="No one matches these filters"
-          description="Try widening the distance, picking other professions or clearing your search."
+          :title="t('discover.emptyTitle')"
+          :description="t('discover.emptyText')"
         >
-          <UiButton variant="secondary" @click="resetFilters(); filters.q = ''">Clear all filters</UiButton>
+          <UiButton variant="secondary" @click="resetFilters(); filters.q = ''">{{ t('discover.clearAll') }}</UiButton>
         </UiEmpty>
       </UiCard>
 
@@ -404,11 +405,11 @@ onBeforeUnmount(() => {
 
       <div ref="sentinel" class="sentinel">
         <UiSpinner v-if="loadingMore" :size="24" />
-        <p v-else-if="!loading && items.length && page >= pages" class="subtle">You've seen everyone for now ✨</p>
+        <p v-else-if="!loading && items.length && page >= pages" class="subtle">{{ t('discover.seenAll') }}</p>
       </div>
     </section>
 
-    <UiSheet v-model:open="filtersOpen" title="Filters" width="440px">
+    <UiSheet v-model:open="filtersOpen" :title="t('common.filters')" width="440px">
       <FilterPanel
         v-model="filters"
         :has-location="me.hasLocation"
@@ -418,7 +419,7 @@ onBeforeUnmount(() => {
         @reset="resetFilters"
       />
       <template #footer>
-        <UiButton block @click="filtersOpen = false">Show {{ total }} results</UiButton>
+        <UiButton block @click="filtersOpen = false">{{ t('common.showResults', { n: total }) }}</UiButton>
       </template>
     </UiSheet>
   </div>

@@ -1,10 +1,11 @@
 import { Server } from 'socket.io';
 import { env } from '../config/env.js';
 import { User } from '../models/index.js';
-import { verifyToken, isTokenStale } from '../utils/token.js';
+import { resolveSession, tokenFrom } from '../services/sessions.js';
+import { accessProblem } from '../middleware/auth.js';
 import { sendMessage } from '../services/messages.js';
 import { areConnected } from '../services/social.js';
-import { setIo, userRoom, broadcast } from './emitter.js';
+import { setIo, userRoom, sessionRoom, broadcast } from './emitter.js';
 
 /** userId -> Set of socket ids; a user is online while at least one tab/device is connected. */
 const sockets = new Map();
@@ -25,12 +26,14 @@ export function initSocket(httpServer) {
   });
   setIo(io);
 
+  // Same httpOnly session cookie as the REST API; the tab tells us which slot (account) it uses.
   io.use(async (socket, next) => {
     try {
-      const payload = verifyToken(socket.handshake.auth?.token);
-      const user = await User.findByPk(payload.sub, { attributes: ['id', 'passwordChangedAt', 'suspendedAt'] });
-      if (!user || isTokenStale(user, payload) || user.suspendedAt) throw new Error('invalid session');
-      socket.data.userId = user.id;
+      const token = tokenFrom(socket.handshake.headers.cookie, socket.handshake.auth?.slot);
+      const found = await resolveSession(token);
+      if (!found || accessProblem(found.user)) throw new Error('invalid session');
+      socket.data.userId = found.user.id;
+      socket.data.sessionId = found.session.id;
       next();
     } catch {
       next(new Error('Unauthorized'));
@@ -40,6 +43,7 @@ export function initSocket(httpServer) {
   io.on('connection', async (socket) => {
     const userId = socket.data.userId;
     socket.join(userRoom(userId));
+    socket.join(sessionRoom(socket.data.sessionId));
 
     const isFirstSocket = !sockets.has(userId);
     if (isFirstSocket) sockets.set(userId, new Set());

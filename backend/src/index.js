@@ -3,7 +3,9 @@ import { env } from './config/env.js';
 import { initDb } from './models/index.js';
 import { createApp } from './app.js';
 import { initSocket, resetPresence } from './socket/index.js';
-import { downgradeExpiredPlans } from './services/plans.js';
+import { downgradeExpiredPlans, remindExpiringPlans } from './services/plans.js';
+import { purgeDeadSessions } from './services/sessions.js';
+import { purgeOldTokens } from './services/accountEmails.js';
 
 async function main() {
   await initDb();
@@ -17,7 +19,18 @@ async function main() {
   });
 
   const HOUR = 60 * 60 * 1000;
-  setInterval(() => downgradeExpiredPlans().catch((err) => console.error('Plan expiry check failed:', err)), HOUR).unref();
+  const hourly = async () => {
+    try {
+      await remindExpiringPlans();
+      await downgradeExpiredPlans();
+      await purgeDeadSessions();
+      await purgeOldTokens();
+    } catch (err) {
+      console.error('Hourly maintenance failed:', err);
+    }
+  };
+  setTimeout(hourly, 30 * 1000).unref();
+  setInterval(hourly, HOUR).unref();
 
   // Sockets and keep-alive connections never close on their own, so a plain server.close()
   // can hang and keep the port busy, which breaks watch-mode restarts.

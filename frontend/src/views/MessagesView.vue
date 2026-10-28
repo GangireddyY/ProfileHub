@@ -12,8 +12,10 @@ import UiInput from '@/components/ui/UiInput.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiSpinner from '@/components/ui/UiSpinner.vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({ userId: { type: String, default: '' } });
+const { t } = useI18n();
 const router = useRouter();
 const route = useRoute();
 
@@ -66,27 +68,33 @@ function startChat(u) {
         <div v-else class="messages__placeholder">
           <UiEmpty
             :icon="MessagesSquare"
-            title="Your conversations"
-            description="Pick a conversation or start a new one with someone in your network."
+            :title="t('messages.yourConversations')"
+            :description="t('messages.pickText')"
           >
-            <UiButton @click="openNewChat">New message</UiButton>
+            <UiButton @click="openNewChat">{{ t('messages.newMessage') }}</UiButton>
           </UiEmpty>
         </div>
       </section>
     </div>
 
-    <UiSheet v-model:open="newChatOpen" title="New message" width="460px">
+    <UiSheet v-model:open="newChatOpen" :title="t('messages.newMessage')" width="460px">
       <div class="stack" style="--gap: 12px">
-        <UiInput v-model="search" :icon="Search" placeholder="Search your connections" type="search" aria-label="Search connections" />
+        <UiInput
+          v-model="search"
+          :icon="Search"
+          :placeholder="t('messages.searchConnections')"
+          type="search"
+          :aria-label="t('messages.searchConnections')"
+        />
         <div v-if="loadingConnections" class="center"><UiSpinner :size="24" /></div>
         <UiEmpty
           v-else-if="!connections.length"
           compact
           :icon="Users"
-          title="No connections yet"
-          description="Connect with people first, then you can message them here."
+          :title="t('messages.noConnections')"
+          :description="t('messages.noConnectionsText')"
         >
-          <UiButton to="/" size="sm" @click="newChatOpen = false">Discover people</UiButton>
+          <UiButton to="/" size="sm" @click="newChatOpen = false">{{ t('common.discoverPeople') }}</UiButton>
         </UiEmpty>
         <div v-else class="pick-list">
           <button v-for="u in filtered" :key="u.id" type="button" class="pick" @click="startChat(u)">

@@ -8,6 +8,8 @@ import { emitToUser } from '../socket/emitter.js';
 import { STATUS, decorateUsers, findPair } from '../services/social.js';
 import { notify, clearRequestNotifications, markRequestHandled } from '../services/notifications.js';
 import { validate, badRequest, notFound } from '../utils/http.js';
+import { isBlockedBetween, ACTIVE_MEMBER } from '../services/safety.js';
+import { connectionRequestLimiter } from '../middleware/limits.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -52,7 +54,7 @@ router.get('/', async (req, res) => {
     rows.map((r) => [r.requesterId === me.id ? r.addresseeId : r.requesterId, r.respondedAt || r.updatedAt]),
   );
 
-  const where = { id: { [Op.in]: [...connectedAt.keys()] } };
+  const where = { id: { [Op.in]: [...connectedAt.keys()] }, ...ACTIVE_MEMBER };
   if (q) {
     const like = isPostgres() ? Op.iLike : Op.like;
     const term = `%${q.replace(/[%_]/g, '')}%`;
@@ -70,12 +72,12 @@ router.get('/requests', async (req, res) => {
   const [incoming, outgoing] = await Promise.all([
     Connection.findAll({
       where: { addresseeId: me.id, status: 'pending' },
-      include: [{ model: User, as: 'requester' }],
+      include: [{ model: User, as: 'requester', where: ACTIVE_MEMBER, required: true }],
       order: [['createdAt', 'DESC']],
     }),
     Connection.findAll({
       where: { requesterId: me.id, status: { [Op.in]: ['pending', 'declined'] } },
-      include: [{ model: User, as: 'addressee' }],
+      include: [{ model: User, as: 'addressee', where: ACTIVE_MEMBER, required: true }],
       order: [['createdAt', 'DESC']],
     }),
   ]);
@@ -92,13 +94,14 @@ router.get('/requests', async (req, res) => {
 });
 
 /** Send a connection request (or accept theirs if they already asked). */
-router.post('/:userId', async (req, res) => {
+router.post('/:userId', connectionRequestLimiter, async (req, res) => {
   const me = req.user;
   const targetId = validate(idSchema, req.params.userId);
   if (targetId === me.id) throw badRequest("You can't connect with yourself");
 
   const target = await User.findByPk(targetId);
-  if (!target) throw notFound('This member does not exist');
+  if (!target || !target.isActiveMember) throw notFound('This member does not exist');
+  if (await isBlockedBetween(me.id, targetId)) throw badRequest("You can't connect with this member");
 
   const row = await findPair(me.id, targetId);
 

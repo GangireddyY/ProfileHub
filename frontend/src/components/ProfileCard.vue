@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
-import { MapPin, Users, Navigation, BadgeCheck } from 'lucide-vue-next';
+import { MapPin, Users, Navigation, BadgeCheck, Star } from 'lucide-vue-next';
+import { useI18n } from 'vue-i18n';
 import { getProfession } from '@/constants/professions';
 import { useRealtimeStore } from '@/stores/realtime';
 import { formatDistance, formatCount, formatRate } from '@/utils/format';
@@ -11,6 +12,7 @@ import ConnectButton from './ConnectButton.vue';
 const props = defineProps({ user: { type: Object, required: true } });
 const emit = defineEmits(['change']);
 
+const { t } = useI18n();
 const realtime = useRealtimeStore();
 const hue = computed(() => getProfession(props.user.profession).hue);
 const online = computed(() => realtime.isOnline(props.user.id, props.user.online));
@@ -20,7 +22,7 @@ const rate = computed(() => formatRate(props.user));
 <template>
   <article class="pcard" :style="{ '--hue': hue }">
     <div class="pcard__cover">
-      <span v-if="user.availableForWork" class="pcard__available">Available</span>
+      <span v-if="user.availableForWork" class="pcard__available">{{ t('card.available') }}</span>
       <ProfessionBadge :profession="user.profession" size="sm" class="pcard__badge" />
     </div>
 
@@ -28,10 +30,19 @@ const rate = computed(() => formatRate(props.user));
       <UiAvatar :name="user.name" :src="user.avatarUrl" :size="76" :online="online" ring class="pcard__avatar" />
       <h3 class="pcard__name">
         <span class="truncate">{{ user.name }}</span>
-        <BadgeCheck v-if="user.verified" class="pcard__verified" aria-label="Verified" />
+        <BadgeCheck v-if="user.verified" class="pcard__verified" :aria-label="t('common.verified')" />
       </h3>
-      <p class="pcard__role">{{ user.roleTitle || user.headline || 'Member' }}</p>
-      <span v-if="rate" class="pcard__rate">{{ rate }}</span>
+      <p class="pcard__role">{{ user.roleTitle || user.headline || t('common.member') }}</p>
+      <div class="pcard__tags">
+        <span v-if="rate" class="pcard__rate">{{ rate }}</span>
+        <span
+          v-if="user.rating?.count"
+          class="pcard__rating"
+          :title="t('reviews.summary', { avg: user.rating.average, n: user.rating.count }, user.rating.count)"
+        >
+          <Star /> {{ user.rating.average.toFixed(1) }} <small>({{ user.rating.count }})</small>
+        </span>
+      </div>
 
       <div class="pcard__meta">
         <span v-if="user.city" class="pcard__meta-item"><MapPin />{{ user.city }}</span>
@@ -47,7 +58,7 @@ const rate = computed(() => formatRate(props.user));
     </RouterLink>
 
     <footer class="pcard__foot">
-      <span class="pcard__count"><Users />{{ formatCount(user.connectionCount) }} connections</span>
+      <span class="pcard__count"><Users />{{ t('card.connections', { n: formatCount(user.connectionCount) }) }}</span>
       <ConnectButton :user="user" size="sm" block @change="emit('change', $event)" />
     </footer>
   </article>
@@ -163,6 +174,40 @@ const rate = computed(() => formatRate(props.user));
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.pcard__tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+.pcard__tags:empty {
+  display: none;
+}
+.pcard__rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 6px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: color-mix(in srgb, #f59e0b 14%, transparent);
+  color: #b45309;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+[data-theme='dark'] .pcard__rating {
+  color: #fbbf24;
+}
+.pcard__rating svg {
+  width: 13px;
+  height: 13px;
+  fill: currentColor;
+}
+.pcard__rating small {
+  font-weight: 500;
+  opacity: 0.8;
 }
 .pcard__meta {
   display: flex;

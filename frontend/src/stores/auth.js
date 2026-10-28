@@ -1,27 +1,43 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { api, getToken, saveToken, clearToken } from '@/api/http';
+import { api, startNewSlot } from '@/api/http';
 import { useRealtimeStore } from './realtime';
 import { useChatStore } from './chat';
+import { setLocale, currentLocale } from '@/i18n';
+import { forgetDevice } from '@/utils/push';
 
+/**
+ * The signed-in member for this tab. The session token is an httpOnly cookie the page never sees; the server
+ * tells us who we are via /auth/me.
+ */
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(getToken());
   const user = ref(null);
   const ready = ref(false);
 
-  const isAuthed = computed(() => Boolean(token.value && user.value));
+  const isAuthed = computed(() => Boolean(user.value));
 
-  function setSession(data) {
-    token.value = data.token;
-    user.value = data.user;
-    saveToken(data.token);
+  function setUser(next) {
+    user.value = next;
+    syncLanguage();
     useRealtimeStore().connect();
   }
 
-  function clearSession() {
-    token.value = null;
-    user.value = null;
-    clearToken();
+  /**
+   * The language picked in the app follows the member to other devices. A choice made before signing in
+   * (e.g. on the sign-in page) wins over the default English saved on the account.
+   */
+  function syncLanguage() {
+    const saved = user.value?.language;
+    if (!saved) return;
+    if (saved !== 'en') setLocale(saved);
+    else if (currentLocale() !== 'en') api.patch('/users/me/settings', { language: currentLocale() }).catch(() => {});
+  }
+
+  async function setLanguage(code) {
+    setLocale(code);
+    if (!user.value || user.value.language === code) return;
+    const { data } = await api.patch('/users/me/settings', { language: code });
+    user.value = data.user;
   }
 
   /** Drops the live socket and cached chats of the account currently signed in to this tab. */
@@ -37,34 +53,53 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function init() {
-    if (token.value) {
-      try {
-        await fetchMe();
-        useRealtimeStore().connect();
-      } catch (err) {
-        if (err.response?.status === 401) clearSession();
-      }
+    try {
+      await fetchMe();
+      syncLanguage();
+      useRealtimeStore().connect();
+    } catch {
+      user.value = null;
     }
     ready.value = true;
   }
 
   async function login(credentials) {
-    const { data } = await api.post('/auth/login', credentials);
-    // Switching accounts within this tab: the old account's socket must not stay connected.
-    if (token.value) endRealtime();
-    setSession(data);
+    // A new slot means signing in here never replaces the account other tabs are using.
+    const previousUser = user.value;
+    const restoreSlot = startNewSlot();
+    let data;
+    try {
+      ({ data } = await api.post('/auth/login', credentials));
+    } catch (err) {
+      restoreSlot();
+      throw err;
+    }
+    if (previousUser) endRealtime();
+    setUser(data.user);
   }
 
+  /** Creates a pending account; the member can sign in once an admin approves it. */
   async function signup(payload) {
     const { data } = await api.post('/auth/signup', payload);
-    if (token.value) endRealtime();
-    setSession(data);
     return data;
   }
 
+  /** Clears this tab locally right away; the server-side sign-out follows. */
   function logout() {
     endRealtime();
-    clearSession();
+    user.value = null;
+    forgetDevice().finally(() => api.post('/auth/logout').catch(() => {}));
+  }
+
+  async function resendVerification() {
+    const { data } = await api.post('/users/me/verify-email');
+    return data;
+  }
+
+  /** Forget the session locally after the server already ended it (expired, suspended, signed out elsewhere). */
+  function dropSession() {
+    endRealtime();
+    user.value = null;
   }
 
   async function updateProfile(patch) {
@@ -102,17 +137,16 @@ export const useAuthStore = defineStore('auth', () => {
     user.value = data.user;
   }
 
-  /** The server rotates our token and signs out every other session. */
+  /** Keeps this session; the server signs out every other device. Resolves to how many were signed out. */
   async function changePassword(payload) {
     const { data } = await api.patch('/users/me/password', payload);
-    const realtime = useRealtimeStore();
-    realtime.disconnect();
-    setSession(data);
+    user.value = data.user;
+    return data.signedOut ?? 0;
   }
 
   async function deleteAccount(password) {
     await api.delete('/users/me', { data: { password } });
-    logout();
+    dropSession();
   }
 
   function adjustCount(key, delta) {
@@ -120,7 +154,6 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    token,
     user,
     ready,
     isAuthed,
@@ -129,6 +162,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     signup,
     logout,
+    dropSession,
     updateProfile,
     updateSettings,
     saveLocation,
@@ -138,5 +172,7 @@ export const useAuthStore = defineStore('auth', () => {
     changePassword,
     deleteAccount,
     adjustCount,
+    setLanguage,
+    resendVerification,
   };
 });

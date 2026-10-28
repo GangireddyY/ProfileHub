@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { User, Plan, PlanRequest, Notification } from '../models/index.js';
 import { requireAuth } from '../middleware/auth.js';
+import { planRequestLimiter } from '../middleware/limits.js';
 import { notify } from '../services/notifications.js';
 import { validate, badRequest, notFound, conflict } from '../utils/http.js';
 
@@ -35,7 +36,7 @@ router.get('/', async (req, res) => {
   });
 });
 
-router.post('/requests', async (req, res) => {
+router.post('/requests', planRequestLimiter, async (req, res) => {
   const { planId, message } = validate(requestSchema, req.body);
   const plan = await Plan.findOne({ where: { id: planId, active: true } });
   if (!plan) throw notFound('That plan is not available');

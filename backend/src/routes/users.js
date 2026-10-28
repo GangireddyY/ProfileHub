@@ -3,6 +3,9 @@ import { Op } from 'sequelize';
 import { z } from 'zod';
 import { CATEGORY_KEYS, RATE_UNITS, CURRENCIES } from '../constants/professions.js';
 import { User, Listing } from '../models/index.js';
+import { LANGUAGES } from '../models/User.js';
+import { notifyPrefsSchema, normalizePrefs } from '../constants/notifyPrefs.js';
+import { ratingSummaries } from '../services/reviews.js';
 import { requireAuth } from '../middleware/auth.js';
 import { broadcastPresence } from '../socket/index.js';
 import { buildSelf, decorateUsers, getConnectionIds, getConnectionCounts } from '../services/social.js';
@@ -10,6 +13,8 @@ import { listExperiences } from '../services/experiences.js';
 import { assertProfession, activeProfessions, professionKeysInCategories } from '../services/professions.js';
 import { userSearchClause } from '../services/search.js';
 import { limitsFor, limitsByPlan, limitsFrom } from '../services/entitlements.js';
+import { blockedIdsFor, blockState, ACTIVE_MEMBER } from '../services/safety.js';
+import { searchLimiter, profileUpdateLimiter } from '../middleware/limits.js';
 import { boundingBox, distanceBetween } from '../utils/geo.js';
 import { validate, notFound } from '../utils/http.js';
 
@@ -32,7 +37,7 @@ const discoverSchema = z.object({
   onlineOnly: boolish,
   availableOnly: boolish,
   maxRate: optionalNumber(z.coerce.number().int().positive().max(10_000_000)),
-  sort: z.enum(['recommended', 'distance', 'newest', 'connections', 'rate']).optional().default('recommended'),
+  sort: z.enum(['recommended', 'distance', 'newest', 'connections', 'rate', 'rating']).optional().default('recommended'),
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).max(50).optional().default(12),
 });
@@ -75,6 +80,8 @@ const settingsSchema = z
     showOnlineStatus: z.boolean(),
     discoverable: z.boolean(),
     discoveryRadiusKm: z.coerce.number().int().min(1).max(20000),
+    language: z.enum(LANGUAGES),
+    notifyPrefs: notifyPrefsSchema,
   })
   .partial();
 
@@ -114,11 +121,12 @@ function recommendationScore(me, user, distanceKm, categoryOf) {
   return score;
 }
 
-router.get('/discover', async (req, res) => {
+router.get('/discover', searchLimiter, async (req, res) => {
   const me = req.user;
   const f = validate(discoverSchema, req.query);
 
-  const where = { id: { [Op.ne]: me.id }, discoverable: true, suspendedAt: null };
+  const hidden = await blockedIdsFor(me.id);
+  const where = { id: { [Op.notIn]: [me.id, ...hidden] }, discoverable: true, ...ACTIVE_MEMBER };
   const and = [];
   // Picked professions and categories widen each other (OR), like any multi-select filter.
   if (f.professions.length || f.categories.length) {
@@ -156,6 +164,10 @@ router.get('/discover', async (req, res) => {
     rows.sort((a, b) => (counts.get(b.user.id) || 0) - (counts.get(a.user.id) || 0));
   } else if (f.sort === 'rate') {
     rows.sort((a, b) => (a.user.rateAmount ?? Infinity) - (b.user.rateAmount ?? Infinity));
+  } else if (f.sort === 'rating') {
+    const ratings = await ratingSummaries(rows.map((r) => r.user.id));
+    const score = (id) => ratings.get(id) || { average: null, count: 0 };
+    rows.sort((a, b) => (score(b.user.id).average ?? 0) - (score(a.user.id).average ?? 0) || score(b.user.id).count - score(a.user.id).count);
   } else if (f.sort === 'recommended') {
     const [professionList, planLimits] = await Promise.all([activeProfessions(), limitsByPlan()]);
     const categoryOf = new Map(professionList.map((p) => [p.key, p.category]));
@@ -180,19 +192,26 @@ router.get('/discover', async (req, res) => {
   });
 });
 
-router.patch('/me', async (req, res) => {
+router.patch('/me', profileUpdateLimiter, async (req, res) => {
   const patch = validate(profileSchema, req.body);
   if (patch.profession !== undefined && patch.profession !== req.user.profession) await assertProfession(patch.profession);
   await req.user.update(patch);
   res.json({ user: await buildSelf(req.user) });
 });
 
-router.patch('/me/settings', async (req, res) => {
+router.patch('/me/settings', profileUpdateLimiter, async (req, res) => {
   const patch = validate(settingsSchema, req.body);
   const presenceChanged = patch.showOnlineStatus !== undefined && patch.showOnlineStatus !== req.user.showOnlineStatus;
 
   if (patch.shareLocation === false) {
     Object.assign(patch, { latitude: null, longitude: null, locationUpdatedAt: null, locationDetails: null });
+  }
+  if (patch.notifyPrefs) {
+    const current = normalizePrefs(req.user.notifyPrefs);
+    patch.notifyPrefs = normalizePrefs({
+      email: { ...current.email, ...patch.notifyPrefs.email },
+      push: { ...current.push, ...patch.notifyPrefs.push },
+    });
   }
   await req.user.update(patch);
   if (presenceChanged) await broadcastPresence(req.user.id);
@@ -200,7 +219,7 @@ router.patch('/me/settings', async (req, res) => {
   res.json({ user: await buildSelf(req.user) });
 });
 
-router.put('/me/location', async (req, res) => {
+router.put('/me/location', profileUpdateLimiter, async (req, res) => {
   const { latitude, longitude, city, details } = validate(locationSchema, req.body);
   const patch = {
     latitude,
@@ -236,7 +255,9 @@ router.get('/:id', async (req, res) => {
   }
 
   const user = await User.findByPk(id);
-  if (!user || (user.suspendedAt && !me.isAdmin)) throw notFound('This profile does not exist');
+  if (!user || (!user.isActiveMember && !me.isAdmin)) throw notFound('This profile does not exist');
+  const blocks = await blockState(me.id, user.id);
+  if (blocks.blockedMe && !me.isAdmin) throw notFound('This profile is not available');
 
   const [[decorated], myIds, theirIds, experiences, listings] = await Promise.all([
     decorateUsers(me, [user]),
@@ -257,7 +278,16 @@ router.get('/:id', async (req, res) => {
   const shareContact = decorated.connectionStatus === 'connected' || (await limitsFor(user)).showContactPublicly || me.isAdmin;
   const contact = shareContact ? user.toContact() : null;
   res.json({
-    user: { ...decorated, isMe: false, contact, mutualCount: mutualIds.length, mutualPreview, experiences, ...listings },
+    user: {
+      ...decorated,
+      isMe: false,
+      contact: blocks.blockedByMe ? null : contact,
+      blockedByMe: blocks.blockedByMe,
+      mutualCount: mutualIds.length,
+      mutualPreview,
+      experiences,
+      ...listings,
+    },
   });
 });
 

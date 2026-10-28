@@ -25,13 +25,17 @@ import {
   Lock,
   BadgeCheck,
   ShieldAlert,
+  Flag,
+  Ban,
+  Star,
 } from 'lucide-vue-next';
+import ReportDialog from '@/components/ReportDialog.vue';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
 import { toast } from '@/composables/useToast';
 import { getProfession } from '@/constants/professions';
-import { formatDistance, lastSeenLabel, formatCount, formatRate } from '@/utils/format';
+import { formatDistance, lastSeenLabel, formatCount, formatRate, timeAgo } from '@/utils/format';
 import { RATE_UNITS } from '@/constants/professions';
 import ListingCard from '@/components/market/ListingCard.vue';
 import UiCard from '@/components/ui/UiCard.vue';
@@ -47,6 +51,7 @@ import ConnectButton from '@/components/ConnectButton.vue';
 import ExperienceTimeline from '@/components/profile/ExperienceTimeline.vue';
 import ExperienceEditor from '@/components/profile/ExperienceEditor.vue';
 import BackButton from '@/components/BackButton.vue';
+import ProfileReviews from '@/components/profile/ProfileReviews.vue';
 
 const props = defineProps({ id: { type: String, required: true } });
 
@@ -134,6 +139,26 @@ async function removeConnection() {
   }
 }
 
+// ---------- Report & block ----------
+const reportOpen = ref(false);
+const blocking = ref(false);
+async function toggleBlock() {
+  const u = user.value;
+  if (!u.blockedByMe && !window.confirm(`Block ${u.name}? You won't be able to message or see each other, and any connection is removed.`)) return;
+  blocking.value = true;
+  try {
+    if (u.blockedByMe) await api.delete(`/blocks/${u.id}`);
+    else await api.post(`/blocks/${u.id}`);
+    toast.success(u.blockedByMe ? `${u.name} is unblocked` : `${u.name} is blocked`);
+    await load({ silent: true });
+    auth.fetchMe().catch(() => {});
+  } catch (err) {
+    toast.error(errorMessage(err));
+  } finally {
+    blocking.value = false;
+  }
+}
+
 async function share() {
   const url = `${location.origin}/u/${user.value.id}`;
   try {
@@ -184,15 +209,18 @@ async function share() {
                 <UiButton variant="secondary" :icon="Share2" icon-only aria-label="Share profile" @click="share" />
               </template>
               <template v-else>
-                <UiButton
-                  v-if="user.connectionStatus !== 'connected' && (user.listingCount || auth.user?.limits?.messageAnyone)"
-                  :to="`/messages/${user.id}`"
-                  variant="secondary"
-                  :icon="MessageCircle"
-                >
-                  Message
-                </UiButton>
-                <ConnectButton :user="user" @change="onStatusChange" />
+                <template v-if="!user.blockedByMe">
+                  <UiButton
+                    v-if="user.connectionStatus !== 'connected' && (user.listingCount || auth.user?.limits?.messageAnyone)"
+                    :to="`/messages/${user.id}`"
+                    variant="secondary"
+                    :icon="MessageCircle"
+                  >
+                    Message
+                  </UiButton>
+                  <ConnectButton :user="user" @change="onStatusChange" />
+                </template>
+                <UiButton v-else variant="secondary" :icon="Ban" :loading="blocking" @click="toggleBlock">Unblock</UiButton>
                 <UiDropdown>
                   <template #trigger="{ toggle }">
                     <UiButton variant="secondary" :icon="MoreHorizontal" icon-only aria-label="More actions" @click="toggle" />
@@ -202,6 +230,13 @@ async function share() {
                     <div class="menu-sep" />
                     <button type="button" class="menu-item menu-item--danger" @click="confirmRemove = true">
                       <UserMinus /> Remove connection
+                    </button>
+                  </template>
+                  <template v-if="user.role !== 'admin'">
+                    <div class="menu-sep" />
+                    <button type="button" class="menu-item menu-item--danger" @click="reportOpen = true"><Flag /> Report profile</button>
+                    <button type="button" class="menu-item menu-item--danger" @click="toggleBlock">
+                      <Ban /> {{ user.blockedByMe ? 'Unblock' : 'Block' }} {{ user.name.split(' ')[0] }}
                     </button>
                   </template>
                 </UiDropdown>
@@ -215,12 +250,16 @@ async function share() {
               <UiBadge v-if="user.verified || (user.isMe && user.limits?.verifiedBadge)" tone="primary" :icon="BadgeCheck">Verified</UiBadge>
               <ProfessionBadge :profession="user.profession" />
             </div>
+            <p v-if="user.blockedByMe" class="blocked-note"><Ban /> You blocked this member. Neither of you can message or see each other.</p>
             <p class="header__role">{{ user.roleTitle || 'No role added yet' }}</p>
             <p v-if="user.headline && user.headline !== user.roleTitle" class="muted">{{ user.headline }}</p>
 
             <div class="header__meta">
               <UiBadge v-if="user.availableForWork" tone="success" dot>Available for work</UiBadge>
               <span v-if="rate" class="rate"><BadgeIndianRupee /> {{ rate }}</span>
+              <a v-if="user.rating?.count" href="#reviews" class="rating-chip">
+                <Star /> {{ user.rating.average.toFixed(1) }} <small>({{ user.rating.count }})</small>
+              </a>
               <span v-if="user.city"><MapPin /> {{ user.city }}</span>
               <span v-if="user.distanceKm != null" class="accent"><Navigation /> {{ formatDistance(user.distanceKm) }}</span>
               <UiBadge :tone="online ? 'success' : 'neutral'" dot>{{ lastSeenLabel(online, lastSeen) }}</UiBadge>
@@ -311,6 +350,8 @@ async function share() {
               description="Sell a vehicle, books, furniture or anything else to people nearby."
             />
           </UiCard>
+
+          <ProfileReviews :member="user" @summary="user.rating = $event" />
         </div>
 
         <UiCard as="aside" class="details">
@@ -378,7 +419,7 @@ async function share() {
             </li>
             <li v-if="!online && lastSeen">
               <span class="details__icon"><Clock3 /></span>
-              <div><small>Last active</small>{{ lastSeenLabel(false, lastSeen).replace('Active ', '') }}</div>
+              <div><small>Last active</small>{{ timeAgo(lastSeen) }}</div>
             </li>
           </ul>
         </UiCard>
@@ -391,6 +432,14 @@ async function share() {
       :entry="editingEntry"
       :kind="editorKind"
       @saved="user.experiences = $event"
+    />
+
+    <ReportDialog
+      v-if="user && !user.isMe"
+      v-model:open="reportOpen"
+      target-type="user"
+      :target-id="user.id"
+      :target-label="user.name"
     />
 
     <UiSheet v-model:open="confirmRemove" title="Remove connection?" width="420px">
@@ -607,6 +656,22 @@ a.stat:hover strong {
 .details__locked {
   color: var(--text-3);
 }
+.blocked-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.blocked-note svg {
+  width: 16px;
+  height: 16px;
+}
 .details li.details__misuse {
   align-items: flex-start;
   gap: 8px;
@@ -635,6 +700,20 @@ a.stat:hover strong {
 .header__meta .rate {
   color: var(--success);
   font-weight: 800;
+}
+.header__meta .rating-chip {
+  color: #b45309;
+  font-weight: 800;
+}
+[data-theme='dark'] .header__meta .rating-chip {
+  color: #fbbf24;
+}
+.header__meta .rating-chip svg {
+  fill: currentColor;
+}
+.header__meta .rating-chip small {
+  font-weight: 500;
+  opacity: 0.8;
 }
 .listings {
   display: grid;

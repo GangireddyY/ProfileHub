@@ -1,10 +1,17 @@
-const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+import { t, intlLocale } from '@/i18n';
+
+const relativeFormats = new Map();
+const rtf = () => {
+  const locale = intlLocale();
+  if (!relativeFormats.has(locale)) relativeFormats.set(locale, new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }));
+  return relativeFormats.get(locale);
+};
 
 export function timeAgo(date) {
   if (!date) return '';
   const diff = (new Date(date).getTime() - Date.now()) / 1000;
   const abs = Math.abs(diff);
-  if (abs < 45) return 'just now';
+  if (abs < 45) return t('common.justNow');
   const units = [
     ['minute', 60],
     ['hour', 3600],
@@ -15,11 +22,11 @@ export function timeAgo(date) {
   ];
   let unit = units[0];
   for (const u of units) if (abs >= u[1]) unit = u;
-  return rtf.format(Math.round(diff / unit[1]), unit[0]);
+  return rtf().format(Math.round(diff / unit[1]), unit[0]);
 }
 
 export function formatTime(date) {
-  return new Date(date).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return new Date(date).toLocaleTimeString(intlLocale(), { hour: 'numeric', minute: '2-digit' });
 }
 
 export function formatDay(date) {
@@ -27,9 +34,9 @@ export function formatDay(date) {
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString()) return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString(undefined, {
+  if (d.toDateString() === today.toDateString()) return t('common.today');
+  if (d.toDateString() === yesterday.toDateString()) return t('common.yesterday');
+  return d.toLocaleDateString(intlLocale(), {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -43,15 +50,14 @@ export function formatStamp(date) {
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return formatTime(d);
   const days = (now - d) / 86400000;
-  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'short' });
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (days < 7) return d.toLocaleDateString(intlLocale(), { weekday: 'short' });
+  return d.toLocaleDateString(intlLocale(), { month: 'short', day: 'numeric' });
 }
 
 export function formatDistance(km) {
   if (km == null) return '';
-  if (km < 1) return `${Math.max(100, Math.round((km * 1000) / 100) * 100)} m away`;
-  if (km < 10) return `${km.toFixed(1)} km away`;
-  return `${Math.round(km)} km away`;
+  if (km < 1) return t('common.mAway', { m: Math.max(100, Math.round((km * 1000) / 100) * 100) });
+  return t('common.kmAway', { km: km < 10 ? km.toFixed(1) : Math.round(km) });
 }
 
 const moneyFormats = new Map();
@@ -79,9 +85,9 @@ export function formatCount(n) {
 }
 
 export function lastSeenLabel(online, lastSeenAt) {
-  if (online) return 'Online';
-  if (!lastSeenAt) return 'Offline';
-  return `Active ${timeAgo(lastSeenAt)}`;
+  if (online) return t('common.online');
+  if (!lastSeenAt) return t('common.offline');
+  return t('common.activeAgo', { time: timeAgo(lastSeenAt) });
 }
 
 /** '2024-03' -> 'Mar 2024' */

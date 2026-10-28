@@ -1,17 +1,19 @@
 import { Router } from 'express';
+import { Op } from 'sequelize';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { User, Experience } from '../models/index.js';
+import { User, Experience, Session } from '../models/index.js';
 import { EXPERIENCE_KINDS } from '../models/Experience.js';
 import { requireAuth } from '../middleware/auth.js';
+import { uploadLimiter, exportLimiter, emailLinkLimiter } from '../middleware/limits.js';
+import { sendVerificationEmail, sendPasswordChangedEmail } from '../services/accountEmails.js';
 import { buildSelf } from '../services/social.js';
 import { listExperiences } from '../services/experiences.js';
-import { deleteAccount } from '../services/accounts.js';
+import { deleteAccount, exportAccountData } from '../services/accounts.js';
+import { revokeSession, revokeUserSessions } from '../services/sessions.js';
 import { saveAvatar, removeAvatarFile, MAX_AVATAR_BYTES, AVATAR_MIME_TYPES } from '../services/avatars.js';
-import { disconnectUser } from '../socket/emitter.js';
-import { signToken } from '../utils/token.js';
 import { validate, badRequest, notFound, HttpError } from '../utils/http.js';
 
 /** Routes for the signed-in member's own account, mounted at /api/users/me. */
@@ -45,7 +47,7 @@ async function assertPassword(user, password) {
 }
 
 // ---------- Avatar ----------
-router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) => {
+router.post('/avatar', requireAuth, uploadLimiter, upload.single('avatar'), async (req, res) => {
   if (!req.file) throw badRequest('Choose an image to upload');
   const previous = req.user.avatarUrl;
   const avatarUrl = await saveAvatar(req.user.id, req.file.buffer);
@@ -82,10 +84,45 @@ router.patch('/password', sensitiveLimiter, requireAuth, async (req, res) => {
   }
 
   await user.update({ passwordHash: await bcrypt.hash(newPassword, 10), passwordChangedAt: new Date() });
-  // Every other session's token is now stale; kick their sockets so they re-authenticate and get signed out.
-  disconnectUser(user.id);
+  // Stay signed in here; every other device and tab is signed out.
+  const signedOut = await revokeUserSessions(user.id, { except: req.session.id });
+  sendPasswordChangedEmail(user);
+  res.json({ user: await buildSelf(user), signedOut });
+});
 
-  res.json({ token: signToken(user.id), user: await buildSelf(user) });
+// ---------- Email verification ----------
+router.post('/verify-email', requireAuth, emailLinkLimiter, async (req, res) => {
+  if (req.user.emailVerifiedAt) return res.json({ alreadyVerified: true });
+  await sendVerificationEmail(req.user);
+  res.json({ sent: true, message: `We sent a confirmation link to ${req.user.email}.` });
+});
+
+// ---------- Sessions ("Where you're signed in") ----------
+router.get('/sessions', requireAuth, async (req, res) => {
+  const rows = await Session.findAll({
+    where: { userId: req.user.id, revokedAt: null, expiresAt: { [Op.gt]: new Date() } },
+    order: [['lastSeenAt', 'DESC']],
+  });
+  res.json({ items: rows.map((s) => s.toPublic(req.session.id)) });
+});
+
+router.delete('/sessions/:id', requireAuth, async (req, res) => {
+  const id = validate(z.uuid('Invalid session'), req.params.id);
+  const row = await Session.findOne({ where: { id, userId: req.user.id } });
+  if (!row) throw notFound('That session has already ended');
+  await revokeSession(row.id);
+  res.status(204).end();
+});
+
+router.post('/sessions/revoke-others', requireAuth, async (req, res) => {
+  res.json({ signedOut: await revokeUserSessions(req.user.id, { except: req.session.id }) });
+});
+
+// ---------- Download my data ----------
+router.get('/export', requireAuth, exportLimiter, async (req, res) => {
+  const data = await exportAccountData(req.user);
+  res.setHeader('Content-Disposition', `attachment; filename="profilehub-data-${new Date().toISOString().slice(0, 10)}.json"`);
+  res.json(data);
 });
 
 // ---------- Delete account ----------

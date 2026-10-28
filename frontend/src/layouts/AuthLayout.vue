@@ -3,16 +3,19 @@ import { computed } from 'vue';
 import { Radar, MessageCircle, Store, ShieldCheck, Sun, Moon, MapPin, UserPlus } from 'lucide-vue-next';
 import { getProfession } from '@/constants/professions';
 import { useThemeStore } from '@/stores/theme';
+import { useI18n } from 'vue-i18n';
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
 
 const theme = useThemeStore();
+const { t } = useI18n();
 const year = new Date().getFullYear();
 
-const features = [
-  { icon: Radar, title: 'Hire nearby', text: 'Filter by profession, rate and distance.' },
-  { icon: Store, title: 'Buy & sell', text: 'Vehicles, books, furniture and more.' },
-  { icon: MessageCircle, title: 'Realtime chat', text: 'Live typing & read receipts.' },
-  { icon: ShieldCheck, title: 'You stay in control', text: 'Location is always opt-in.' },
-];
+const features = computed(() => [
+  { icon: Radar, title: t('auth.featHire'), text: t('auth.featHireText') },
+  { icon: Store, title: t('auth.featSell'), text: t('auth.featSellText') },
+  { icon: MessageCircle, title: t('auth.featChat'), text: t('auth.featChatText') },
+  { icon: ShieldCheck, title: t('auth.featControl'), text: t('auth.featControlText') },
+]);
 
 const TRUST = [
   { i: 'RG', hue: 25 },
@@ -47,11 +50,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
       <div class="hero__inner">
         <div class="hero__center">
           <div class="hero__copy">
-            <h1>Your professional world, <span class="gradient-text">right around the corner.</span></h1>
-            <p class="hero__lead">
-              Doctors, developers, electricians, drivers, teachers and 150+ more professions. Hire nearby talent, buy
-              and sell locally, and build a network that matters.
-            </p>
+            <h1>{{ t('auth.heroTitle') }} <span class="gradient-text">{{ t('auth.heroTitleAccent') }}</span></h1>
+            <p class="hero__lead">{{ t('auth.heroLead') }}</p>
           </div>
 
           <div class="hero__visual" aria-hidden="true">
@@ -75,7 +75,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
               <span class="glass__avatar" style="--hue: 25">RG</span>
               <div class="glass__body">
                 <strong>Ramesh Gowda <em>₹350/hr</em></strong>
-                <span class="glass__meta"><MapPin /> Electrician · 0.8 km</span>
+                <span class="glass__meta"><MapPin /> {{ t('auth.demoMeta') }}</span>
               </div>
               <span class="glass__action"><UserPlus /></span>
             </div>
@@ -83,8 +83,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
             <div class="glass glass--message">
               <span class="glass__avatar" style="--hue: 243">SM</span>
               <div class="glass__body">
-                <strong>Sam Miller <em>now</em></strong>
-                <span class="glass__text">Coffee near the office tomorrow?</span>
+                <strong>Sam Miller <em>{{ t('auth.demoNow') }}</em></strong>
+                <span class="glass__text">{{ t('auth.demoMessage') }}</span>
               </div>
               <span class="typing"><i /><i /><i /></span>
             </div>
@@ -105,7 +105,7 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
           <div class="hero__avatars" aria-hidden="true">
             <span v-for="(a, i) in TRUST" :key="a.i" :style="{ '--hue': a.hue, zIndex: TRUST.length - i }">{{ a.i }}</span>
           </div>
-          <p><strong>150+ professions</strong> · from drivers and electricians to doctors and developers</p>
+          <p><strong>{{ t('auth.trust') }}</strong> · {{ t('auth.trustText') }}</p>
         </div>
       </div>
     </aside>
@@ -119,12 +119,13 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
             <img src="/favicon.svg" alt="" width="36" height="36" />
             <span>ProfileHUB</span>
           </RouterLink>
-          <span class="hero__eyebrow"><span class="live-dot" /> Professionals near you, live</span>
+          <span class="hero__eyebrow"><span class="live-dot" /> {{ t('auth.eyebrow') }}</span>
         </div>
+        <LanguageSwitcher class="auth__lang" />
         <button
           type="button"
           class="theme-btn"
-          :aria-label="theme.isDark ? 'Switch to light theme' : 'Switch to dark theme'"
+          :aria-label="theme.isDark ? t('nav.lightMode') : t('nav.darkMode')"
           @click="theme.toggle()"
         >
           <Transition name="fade" mode="out-in">
@@ -144,8 +145,8 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
 
       <footer class="auth__foot">
         © {{ year }} ProfileHUB ·
-        <RouterLink to="/privacy">Privacy policy</RouterLink> ·
-        <RouterLink to="/terms">Terms &amp; guidelines</RouterLink>
+        <RouterLink to="/privacy">{{ t('nav.privacy') }}</RouterLink> ·
+        <RouterLink to="/terms">{{ t('nav.terms') }}</RouterLink>
       </footer>
     </main>
   </div>
@@ -639,12 +640,15 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   align-items: flex-start;
   gap: 10px;
 }
+.auth__lang {
+  margin-left: auto;
+}
 .theme-btn {
   display: grid;
   place-items: center;
   width: 40px;
   height: 40px;
-  margin-left: auto;
+  flex-shrink: 0;
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--surface);

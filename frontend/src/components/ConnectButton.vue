@@ -4,6 +4,7 @@ import { UserPlus, Clock, Check, X, MessageCircle, Undo2 } from 'lucide-vue-next
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
 import UiButton from './ui/UiButton.vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   /** Needs id, name, connectionStatus and (for incoming) connectionId. */
@@ -13,6 +14,7 @@ const props = defineProps({
 });
 const emit = defineEmits(['change']);
 
+const { t } = useI18n();
 const busy = ref(null);
 const confirmWithdraw = ref(false);
 let confirmTimer;
@@ -31,14 +33,14 @@ async function run(kind, request, next, message) {
 }
 
 const connect = () =>
-  run('connect', () => api.post(`/connections/${props.user.id}`), 'outgoing', `Invitation sent to ${props.user.name}`);
+  run('connect', () => api.post(`/connections/${props.user.id}`), 'outgoing', t('connect.sent', { name: props.user.name }));
 
 const accept = () =>
   run(
     'accept',
     () => api.post(`/connections/requests/${props.user.connectionId}/accept`),
     'connected',
-    `You and ${props.user.name} are now connected`,
+    t('connect.connected', { name: props.user.name }),
   );
 
 const decline = () => run('decline', () => api.post(`/connections/requests/${props.user.connectionId}/decline`), 'none');
@@ -52,7 +54,7 @@ function withdraw() {
     return;
   }
   confirmWithdraw.value = false;
-  run('withdraw', () => api.delete(`/connections/${props.user.id}`), 'none', 'Invitation withdrawn');
+  run('withdraw', () => api.delete(`/connections/${props.user.id}`), 'none', t('connect.withdrawn'));
 }
 
 onBeforeUnmount(() => clearTimeout(confirmTimer));
@@ -62,20 +64,20 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
   <div class="connect" :class="{ 'connect--block': block }">
     <template v-if="user.connectionStatus === 'connected'">
       <UiButton variant="soft" :size="size" :icon="MessageCircle" :block="block" :to="`/messages/${user.id}`">
-        Message
+        {{ t('common.message') }}
       </UiButton>
     </template>
 
     <template v-else-if="user.connectionStatus === 'incoming'">
       <UiButton :size="size" :icon="Check" :loading="busy === 'accept'" :disabled="!!busy" class="grow" @click="accept">
-        Accept
+        {{ t('connect.accept') }}
       </UiButton>
       <UiButton
         variant="secondary"
         :size="size"
         :icon="X"
         icon-only
-        aria-label="Ignore invitation"
+        :aria-label="t('connect.ignore')"
         :loading="busy === 'decline'"
         :disabled="!!busy"
         @click="decline"
@@ -91,13 +93,13 @@ onBeforeUnmount(() => clearTimeout(confirmTimer));
         :loading="busy === 'withdraw'"
         @click="withdraw"
       >
-        {{ confirmWithdraw ? 'Tap to withdraw' : 'Pending' }}
+        {{ confirmWithdraw ? t('connect.tapWithdraw') : t('connect.pending') }}
       </UiButton>
     </template>
 
     <template v-else>
       <UiButton variant="outline" :size="size" :icon="UserPlus" :block="block" :loading="busy === 'connect'" @click="connect">
-        Connect
+        {{ t('connect.connect') }}
       </UiButton>
     </template>
   </div>

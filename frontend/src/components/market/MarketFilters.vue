@@ -4,6 +4,7 @@ import { IndianRupee, Sparkle, Radar, ArrowDownUp, LocateFixed } from 'lucide-vu
 import { CONDITIONS, LISTING_SORTS } from '@/constants/marketplace';
 import UiSelect from '../ui/UiSelect.vue';
 import UiButton from '../ui/UiButton.vue';
+import { useI18n } from 'vue-i18n';
 
 const filters = defineModel({ type: Object, required: true });
 const props = defineProps({
@@ -12,9 +13,14 @@ const props = defineProps({
 });
 const emit = defineEmits(['reset', 'enable-location']);
 
+const { t } = useI18n();
 const DISTANCES = [null, 2, 5, 10, 25, 50, 100];
-const distanceOptions = DISTANCES.map((d) => ({ value: d ?? '', label: d == null ? 'Any distance' : `Within ${d} km` }));
-const sortOptions = computed(() => LISTING_SORTS.filter((s) => s.value !== 'distance' || props.hasLocation));
+const distanceOptions = computed(() =>
+  DISTANCES.map((d) => ({ value: d ?? '', label: d == null ? t('common.anyDistance') : t('common.withinKm', { km: d }) })),
+);
+const sortOptions = computed(() =>
+  LISTING_SORTS.filter((s) => s.value !== 'distance' || props.hasLocation).map((s) => ({ value: s.value, label: s.label })),
+);
 
 const set = (key, value) => (filters.value = { ...filters.value, [key]: value });
 const field = (key, parse = (v) => v) =>
@@ -37,16 +43,16 @@ function toggleCondition(value) {
 <template>
   <div class="mfilters">
     <section class="mfilters__section">
-      <h3 class="mfilters__title"><IndianRupee /> Price</h3>
+      <h3 class="mfilters__title"><IndianRupee /> {{ t('market.price') }}</h3>
       <div class="price">
-        <input v-model.lazy="minPrice" type="number" min="0" inputmode="numeric" placeholder="Min" aria-label="Minimum price" />
-        <span class="subtle">to</span>
-        <input v-model.lazy="maxPrice" type="number" min="0" inputmode="numeric" placeholder="Max" aria-label="Maximum price" />
+        <input v-model.lazy="minPrice" type="number" min="0" inputmode="numeric" :placeholder="t('market.min')" :aria-label="t('market.min')" />
+        <span class="subtle">{{ t('market.to') }}</span>
+        <input v-model.lazy="maxPrice" type="number" min="0" inputmode="numeric" :placeholder="t('market.max')" :aria-label="t('market.max')" />
       </div>
     </section>
 
     <section class="mfilters__section">
-      <h3 class="mfilters__title"><Sparkle /> Condition</h3>
+      <h3 class="mfilters__title"><Sparkle /> {{ t('market.condition') }}</h3>
       <div class="conditions">
         <button
           v-for="c in CONDITIONS"
@@ -63,22 +69,22 @@ function toggleCondition(value) {
     </section>
 
     <section class="mfilters__section">
-      <h3 class="mfilters__title"><Radar /> Distance</h3>
-      <UiSelect v-if="hasLocation" v-model="maxDistance" :options="distanceOptions" aria-label="Distance" />
+      <h3 class="mfilters__title"><Radar /> {{ t('common.distance') }}</h3>
+      <UiSelect v-if="hasLocation" v-model="maxDistance" :options="distanceOptions" :aria-label="t('common.distance')" />
       <div v-else class="locate">
-        <p>Share your location to see items near you.</p>
+        <p>{{ t('market.locateText') }}</p>
         <UiButton size="sm" variant="soft" :icon="LocateFixed" :loading="locating" @click="emit('enable-location')">
-          Enable location
+          {{ t('common.enableLocation') }}
         </UiButton>
       </div>
     </section>
 
     <section class="mfilters__section">
-      <h3 class="mfilters__title"><ArrowDownUp /> Sort by</h3>
-      <UiSelect v-model="sort" :options="sortOptions" aria-label="Sort listings" />
+      <h3 class="mfilters__title"><ArrowDownUp /> {{ t('common.sortBy') }}</h3>
+      <UiSelect v-model="sort" :options="sortOptions" :aria-label="t('common.sortBy')" />
     </section>
 
-    <UiButton variant="ghost" size="sm" block @click="emit('reset')">Reset filters</UiButton>
+    <UiButton variant="ghost" size="sm" block @click="emit('reset')">{{ t('common.resetFilters') }}</UiButton>
   </div>
 </template>
 

@@ -4,15 +4,19 @@ dotenv.config({ quiet: true });
 
 const isProd = process.env.NODE_ENV === 'production';
 
-if (isProd && !process.env.JWT_SECRET) {
-  throw new Error('JWT_SECRET must be set in production');
-}
+const days = (value, fallback) => {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
 
 export const env = {
   isProd,
   port: Number(process.env.PORT) || 4000,
-  jwtSecret: process.env.JWT_SECRET || 'dev-only-secret-change-me',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
+  /** Sessions end after this many days without activity, and after SESSION_MAX_DAYS no matter what. */
+  sessionIdleDays: days(process.env.SESSION_IDLE_DAYS, 14),
+  sessionMaxDays: days(process.env.SESSION_MAX_DAYS, 60),
+  /** Send session cookies over HTTPS only. On by default in production. */
+  secureCookies: process.env.SECURE_COOKIES ? process.env.SECURE_COOKIES === 'true' : isProd,
   clientOrigins: (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
     .split(',')
     .map((o) => o.trim())
@@ -29,11 +33,6 @@ export const env = {
   },
   dbStorage: process.env.DB_STORAGE || './data/profilehub.sqlite',
   uploadDir: process.env.UPLOAD_DIR || './uploads',
-  /** Accounts with these emails are given the admin role every time the server starts. */
-  adminEmails: (process.env.ADMIN_EMAILS || '')
-    .split(',')
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean),
   /**
    * Main admin account. Created on startup if it doesn't exist; the password is only used for that first
    * creation, so the admin can change it (and the rest of the profile) from Settings afterwards.
@@ -43,4 +42,21 @@ export const env = {
     password: process.env.ADMIN_PASSWORD || '',
     name: (process.env.ADMIN_NAME || 'Administrator').trim(),
   },
+};
+
+/** Public address of the web app, used for links in emails and push notifications. */
+env.appUrl = (process.env.APP_URL || env.clientOrigins[0] || 'http://localhost:5173').replace(/\/+$/, '');
+
+/** Without an API key, emails are printed to the console instead of being sent (handy in development). */
+env.mail = {
+  sendgridKey: process.env.SENDGRID_API_KEY || '',
+  fromEmail: process.env.SENDGRID_FROM_EMAIL || '',
+  fromName: process.env.SENDGRID_FROM_NAME || 'ProfileHUB',
+};
+
+/** Web Push keys (generate with `npx web-push generate-vapid-keys`). Push is off when they're missing. */
+env.push = {
+  publicKey: process.env.VAPID_PUBLIC_KEY || '',
+  privateKey: process.env.VAPID_PRIVATE_KEY || '',
+  subject: process.env.VAPID_SUBJECT || `mailto:${process.env.SENDGRID_FROM_EMAIL || 'admin@example.com'}`,
 };

@@ -6,8 +6,7 @@
   "main": "src/index.js",
   "scripts": {
     "dev": "node --watch-path=src src/index.js",
-    "start": "node src/index.js",
-    "seed": "node src/seed.js"
+    "start": "node src/index.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -16,7 +15,6 @@
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.1",
     "helmet": "^8.3.0",
-    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.12.1",
     "multer": "^2.5.0",
     "pg": "^8.23.1",
@@ -26,6 +24,7 @@
     "socket.io": "^4.8.4",
     "sqlite3": "^6.0.1",
     "umzug": "^3.8.3",
+    "web-push": "^3.6.7",
     "zod": "^4.6.7"
   }
 }

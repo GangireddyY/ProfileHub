@@ -18,6 +18,9 @@ import {
   Crown,
   Ban,
   Send,
+  UserCheck,
+  Flag,
+  History,
 } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { useProfessionsStore } from '@/stores/professions';
@@ -41,11 +44,14 @@ import BackButton from '@/components/BackButton.vue';
 import AdminUsers from '@/components/admin/AdminUsers.vue';
 import AdminPlans from '@/components/admin/AdminPlans.vue';
 import AdminPlanRequests from '@/components/admin/AdminPlanRequests.vue';
+import AdminListings from '@/components/admin/AdminListings.vue';
+import AdminReports from '@/components/admin/AdminReports.vue';
+import AdminActivity from '@/components/admin/AdminActivity.vue';
 
 const store = useProfessionsStore();
 
 const route = useRoute();
-const TAB_KEYS = ['users', 'plans', 'plan-requests', 'requests', 'catalog'];
+const TAB_KEYS = ['approvals', 'users', 'reports', 'listings', 'plans', 'plan-requests', 'requests', 'catalog', 'activity'];
 // Notifications link straight to a tab, e.g. /admin?tab=plan-requests.
 const tab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'users');
 watch(
@@ -80,6 +86,8 @@ async function loadStats() {
 
 const statCards = computed(() => [
   { label: 'Members', value: stats.value?.users, icon: Users },
+  { label: 'Waiting approval', value: stats.value?.pendingApprovals, icon: UserCheck, hot: stats.value?.pendingApprovals > 0 },
+  { label: 'Open reports', value: stats.value?.openReports, icon: Flag, hot: stats.value?.openReports > 0 },
   { label: 'On a paid plan', value: stats.value?.subscribers, icon: Crown },
   {
     label: 'Plan requests',
@@ -94,11 +102,15 @@ const statCards = computed(() => [
   { label: 'Open to work', value: stats.value?.availableWorkers, icon: HardHat },
 ]);
 const tabs = computed(() => [
+  { key: 'approvals', label: 'Approvals', icon: UserCheck, count: stats.value?.pendingApprovals || undefined },
   { key: 'users', label: 'Users', icon: Users, count: stats.value?.users || undefined },
+  { key: 'reports', label: 'Reports', icon: Flag, count: stats.value?.openReports || undefined },
+  { key: 'listings', label: 'Listings', icon: Store },
   { key: 'plans', label: 'Plans', icon: Crown, count: plans.value.length || undefined },
   { key: 'plan-requests', label: 'Plan requests', icon: Send, count: stats.value?.pendingPlanRequests || undefined },
   { key: 'requests', label: 'Profession requests', icon: Inbox, count: stats.value?.pendingRequests || undefined },
   { key: 'catalog', label: 'Profession list', icon: BriefcaseBusiness },
+  { key: 'activity', label: 'Activity log', icon: History },
 ]);
 
 // ---------- Requests ----------
@@ -310,9 +322,13 @@ onMounted(() => {
 
     <UiTabs v-model="tab" :tabs="tabs" />
 
-    <AdminUsers v-if="tab === 'users'" :plans="plans" @changed="onAccountsChanged" />
+    <AdminUsers v-if="tab === 'approvals'" key="approvals" :plans="plans" initial-status="pending" @changed="onAccountsChanged" />
+    <AdminUsers v-else-if="tab === 'users'" key="users" :plans="plans" @changed="onAccountsChanged" />
+    <AdminReports v-else-if="tab === 'reports'" :plans="plans" @changed="onAccountsChanged" />
+    <AdminListings v-else-if="tab === 'listings'" @changed="onAccountsChanged" />
     <AdminPlans v-else-if="tab === 'plans'" :plans="plans" :loading="loadingPlans" @changed="onAccountsChanged" />
     <AdminPlanRequests v-else-if="tab === 'plan-requests'" @changed="onAccountsChanged" />
+    <AdminActivity v-else-if="tab === 'activity'" />
 
     <!-- Requests -->
     <template v-else-if="tab === 'requests'">

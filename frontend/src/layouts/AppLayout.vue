@@ -27,7 +27,10 @@ import { useThemeStore } from '@/stores/theme';
 import { useIsMobile } from '@/composables/useMediaQuery';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiDropdown from '@/components/ui/UiDropdown.vue';
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const chat = useChatStore();
 const realtime = useRealtimeStore();
@@ -40,10 +43,10 @@ const me = computed(() => auth.user);
 const unread = computed(() => (chat.conversationsLoaded ? chat.totalUnread : me.value?.unreadMessages || 0));
 
 const nav = computed(() => [
-  { to: '/', label: 'Discover', icon: Compass, match: (n) => n === 'discover' },
-  { to: '/market', label: 'Market', icon: Store, match: (n) => ['market', 'listing', 'listing-new', 'listing-edit'].includes(n) },
-  { to: '/network', label: 'Network', icon: Users, badge: me.value?.pendingRequests, match: (n) => n === 'network' },
-  { to: '/messages', label: 'Messages', icon: MessageCircle, badge: unread.value, match: (n) => n === 'messages' },
+  { to: '/', label: t('nav.discover'), icon: Compass, match: (n) => n === 'discover' },
+  { to: '/market', label: t('nav.market'), icon: Store, match: (n) => ['market', 'listing', 'listing-new', 'listing-edit'].includes(n) },
+  { to: '/network', label: t('nav.network'), icon: Users, badge: me.value?.pendingRequests, match: (n) => n === 'network' },
+  { to: '/messages', label: t('nav.messages'), icon: MessageCircle, badge: unread.value, match: (n) => n === 'messages' },
 ]);
 const isAdmin = computed(() => me.value?.role === 'admin');
 
@@ -62,7 +65,7 @@ const tabs = computed(() => [
   ...nav.value,
   {
     to: `/u/${me.value?.id}`,
-    label: 'Profile',
+    label: t('nav.profile'),
     icon: UserRound,
     match: (n) => n === 'profile' && route.params.id === me.value?.id,
   },
@@ -91,8 +94,8 @@ function logout() {
           <input
             v-model="topQuery"
             type="search"
-            placeholder="Search people, jobs, items…"
-            aria-label="Search ProfileHUB"
+            :placeholder="t('nav.searchPlaceholder')"
+            :aria-label="t('nav.searchLabel')"
             enterkeyhint="search"
           />
         </form>
@@ -115,8 +118,8 @@ function logout() {
 
         <div class="topbar__right">
           <Transition name="fade">
-            <span v-if="!realtime.connected" class="offline-pill" title="Realtime connection lost, retrying">
-              <WifiOff /> <span class="offline-pill__text">Reconnecting</span>
+            <span v-if="!realtime.connected" class="offline-pill" :title="t('nav.reconnectingTitle')">
+              <WifiOff /> <span class="offline-pill__text">{{ t('nav.reconnecting') }}</span>
             </span>
           </Transition>
 
@@ -124,7 +127,7 @@ function logout() {
             to="/search"
             class="icon-btn search-btn"
             :class="{ 'is-active': route.name === 'search' }"
-            aria-label="Search"
+            :aria-label="t('nav.search')"
           >
             <Search />
           </RouterLink>
@@ -133,7 +136,7 @@ function logout() {
             to="/notifications"
             class="icon-btn"
             :class="{ 'is-active': route.name === 'notifications' }"
-            :aria-label="me?.unreadNotifications ? `Notifications, ${me.unreadNotifications} unread` : 'Notifications'"
+            :aria-label="me?.unreadNotifications ? t('nav.notificationsUnread', { n: me.unreadNotifications }) : t('nav.notifications')"
           >
             <span class="topnav__icon">
               <Bell />
@@ -146,18 +149,18 @@ function logout() {
           <button
             type="button"
             class="icon-btn"
-            :aria-label="theme.isDark ? 'Switch to light mode' : 'Switch to dark mode'"
+            :aria-label="theme.isDark ? t('nav.lightMode') : t('nav.darkMode')"
             @click="theme.toggle()"
           >
             <Sun v-if="theme.isDark" />
             <Moon v-else />
           </button>
 
-          <RouterLink to="/settings" class="icon-btn mobile-only" aria-label="Settings"><Settings /></RouterLink>
+          <RouterLink to="/settings" class="icon-btn mobile-only" :aria-label="t('nav.settings')"><Settings /></RouterLink>
 
           <UiDropdown class="desktop-only">
             <template #trigger="{ toggle }">
-              <button type="button" class="avatar-btn" aria-label="Account menu" @click="toggle">
+              <button type="button" class="avatar-btn" :aria-label="t('nav.accountMenu')" @click="toggle">
                 <UiAvatar :name="me?.name" :src="me?.avatarUrl" :size="38" :online="realtime.connected && me?.showOnlineStatus" />
               </button>
             </template>
@@ -168,16 +171,18 @@ function logout() {
                 <span class="muted truncate" style="display: block; font-size: 0.82rem">{{ me?.roleTitle || me?.email }}</span>
               </div>
             </div>
-            <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> View profile</RouterLink>
-            <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> My listings</RouterLink>
-            <RouterLink to="/plans" class="menu-item"><Crown /> Plans</RouterLink>
-            <RouterLink to="/settings" class="menu-item"><Settings /> Settings & privacy</RouterLink>
-            <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> Admin panel</RouterLink>
+            <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> {{ t('common.viewProfile') }}</RouterLink>
+            <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> {{ t('nav.myListings') }}</RouterLink>
+            <RouterLink to="/plans" class="menu-item"><Crown /> {{ t('nav.plans') }}</RouterLink>
+            <RouterLink to="/settings" class="menu-item"><Settings /> {{ t('nav.settingsPrivacy') }}</RouterLink>
+            <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> {{ t('nav.adminPanel') }}</RouterLink>
             <div class="menu-sep" />
-            <RouterLink to="/terms#safety" class="menu-item"><ShieldCheck /> Safety &amp; guidelines</RouterLink>
-            <RouterLink to="/privacy" class="menu-item"><FileText /> Privacy policy</RouterLink>
+            <div class="menu-lang" @click.stop><LanguageSwitcher /></div>
             <div class="menu-sep" />
-            <button type="button" class="menu-item menu-item--danger" @click="logout"><LogOut /> Sign out</button>
+            <RouterLink to="/terms#safety" class="menu-item"><ShieldCheck /> {{ t('nav.safety') }}</RouterLink>
+            <RouterLink to="/privacy" class="menu-item"><FileText /> {{ t('nav.privacy') }}</RouterLink>
+            <div class="menu-sep" />
+            <button type="button" class="menu-item menu-item--danger" @click="logout"><LogOut /> {{ t('common.signOut') }}</button>
           </UiDropdown>
         </div>
       </div>
@@ -389,6 +394,13 @@ function logout() {
   padding: 10px 10px 12px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--border);
+}
+.menu-lang {
+  padding: 4px 6px;
+}
+.menu-lang :deep(.lang-select),
+.menu-lang :deep(select) {
+  width: 100%;
 }
 .offline-pill {
   display: inline-flex;

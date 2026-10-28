@@ -1,13 +1,16 @@
 import { Op } from 'sequelize';
 import { Notification, User } from '../models/index.js';
 import { emitToUser } from '../socket/emitter.js';
+import { deliverNotification } from './delivery.js';
 
-export async function notify({ userId, actorId, type, entityId = null }) {
-  const notification = await Notification.create({ userId, actorId, type, entityId });
-  const actor = await User.findByPk(actorId);
+/** In-app notification, pushed live to open tabs, then sent by email/push in the background. */
+export async function notify({ userId, actorId = null, type, entityId = null, data = null }) {
+  const notification = await Notification.create({ userId, actorId, type, entityId, data });
+  const actor = actorId ? await User.findByPk(actorId) : null;
   emitToUser(userId, 'notification:new', {
     notification: { ...notification.get({ plain: true }), actor: actor?.toPublic() ?? null },
   });
+  deliverNotification(notification, actor);
   return notification;
 }
 

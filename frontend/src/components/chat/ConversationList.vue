@@ -10,6 +10,7 @@ import UiButton from '@/components/ui/UiButton.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import BackButton from '@/components/BackButton.vue';
+import { useI18n } from 'vue-i18n';
 
 defineProps({
   activeId: { type: String, default: '' },
@@ -18,10 +19,18 @@ defineProps({
 });
 const emit = defineEmits(['new-chat']);
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const chat = useChatStore();
 const realtime = useRealtimeStore();
 const search = ref('');
+
+function preview(m) {
+  if (m.deletedAt) return t('messages.deleted');
+  if (m.body) return m.body;
+  const n = m.attachments?.length || 0;
+  return n > 1 ? `📷 ${t('messages.photos', { n })}` : `📷 ${t('messages.photo')}`;
+}
 
 const items = computed(() => {
   const q = search.value.trim().toLowerCase();
@@ -34,14 +43,19 @@ const items = computed(() => {
     <header class="clist__head">
       <div class="clist__title">
         <BackButton icon-only :to="backTo" />
-        <h1 class="page-title">Messages</h1>
+        <h1 class="page-title">{{ t('messages.title') }}</h1>
       </div>
-      <UiButton variant="soft" size="sm" :icon="SquarePen" icon-only aria-label="New message" @click="emit('new-chat')" />
+      <UiButton variant="soft" size="sm" :icon="SquarePen" icon-only :aria-label="t('messages.newMessage')" @click="emit('new-chat')" />
     </header>
 
     <label class="clist__search">
       <Search />
-      <input v-model="search" type="search" placeholder="Search conversations" aria-label="Search conversations" />
+      <input
+        v-model="search"
+        type="search"
+        :placeholder="t('messages.searchConversations')"
+        :aria-label="t('messages.searchConversations')"
+      />
     </label>
 
     <div class="clist__items">
@@ -59,13 +73,13 @@ const items = computed(() => {
         v-else-if="!chat.conversations.length"
         compact
         :icon="MessagesSquare"
-        title="No conversations yet"
-        description="Start chatting with someone from your network."
+        :title="t('messages.noConversations')"
+        :description="t('messages.noConversationsText')"
       >
-        <UiButton size="sm" @click="emit('new-chat')">New message</UiButton>
+        <UiButton size="sm" @click="emit('new-chat')">{{ t('messages.newMessage') }}</UiButton>
       </UiEmpty>
 
-      <p v-else-if="!items.length" class="subtle empty-search">No conversations match "{{ search }}"</p>
+      <p v-else-if="!items.length" class="subtle empty-search">{{ t('messages.noMatch', { q: search }) }}</p>
 
       <RouterLink
         v-for="c in items"
@@ -81,13 +95,13 @@ const items = computed(() => {
             <time class="citem__time">{{ formatStamp(c.lastMessage.createdAt) }}</time>
           </div>
           <div class="citem__bottom">
-            <p v-if="chat.typing[c.user.id]" class="citem__typing">typing…</p>
-            <p v-else class="citem__preview truncate">
+            <p v-if="chat.typing[c.user.id]" class="citem__typing">{{ t('common.typing') }}</p>
+            <p v-else class="citem__preview truncate" :class="{ 'is-deleted': c.lastMessage.deletedAt }">
               <template v-if="c.lastMessage.senderId === auth.user.id">
                 <CheckCheck v-if="c.lastMessage.readAt" class="tick tick--read" />
                 <Check v-else class="tick" />
               </template>
-              {{ c.lastMessage.body }}
+              {{ preview(c.lastMessage) }}
             </p>
             <span v-if="c.unread" class="citem__unread">{{ c.unread > 9 ? '9+' : c.unread }}</span>
           </div>
@@ -193,6 +207,10 @@ const items = computed(() => {
 .citem.is-unread .citem__preview {
   color: var(--text);
   font-weight: 600;
+}
+.citem__preview.is-deleted {
+  font-style: italic;
+  color: var(--text-3);
 }
 .citem.is-unread .citem__time {
   color: var(--primary);

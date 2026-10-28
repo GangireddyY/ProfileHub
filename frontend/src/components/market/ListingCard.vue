@@ -3,6 +3,9 @@ import { computed } from 'vue';
 import { MapPin, Navigation, Images, Sparkles } from 'lucide-vue-next';
 import { getListingCategory, conditionLabel } from '@/constants/marketplace';
 import { formatMoney, formatDistance, timeAgo } from '@/utils/format';
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   listing: { type: Object, required: true },
@@ -21,13 +24,13 @@ const cover = computed(() => props.listing.images?.[0] || '');
         <component :is="category.icon" aria-hidden="true" />
       </div>
       <span v-if="listing.images?.length > 1" class="lcard__count"><Images /> {{ listing.images.length }}</span>
-      <span v-if="listing.status !== 'active'" class="lcard__status">{{ listing.status === 'sold' ? 'Sold' : 'Hidden' }}</span>
-      <span v-else-if="listing.featured" class="lcard__featured"><Sparkles /> Featured</span>
+      <span v-if="listing.status !== 'active'" class="lcard__status">{{ listing.status === 'sold' ? t('market.sold') : t('market.hidden') }}</span>
+      <span v-else-if="listing.featured" class="lcard__featured"><Sparkles /> {{ t('market.featured') }}</span>
     </div>
     <div class="lcard__body">
       <div class="lcard__price">
-        {{ listing.price ? formatMoney(listing.price, listing.currency) : 'Free' }}
-        <span v-if="listing.negotiable" class="lcard__nego">Negotiable</span>
+        {{ listing.price ? formatMoney(listing.price, listing.currency) : t('common.free') }}
+        <span v-if="listing.negotiable" class="lcard__nego">{{ t('market.negotiable') }}</span>
       </div>
       <h3 class="lcard__title">{{ listing.title }}</h3>
       <div class="lcard__meta">

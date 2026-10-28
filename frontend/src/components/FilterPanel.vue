@@ -7,6 +7,7 @@ import UiSelect from './ui/UiSelect.vue';
 import UiButton from './ui/UiButton.vue';
 import { DISTANCE_STEPS, RATE_STEPS } from '@/constants/filters';
 import { formatMoney } from '@/utils/format';
+import { useI18n } from 'vue-i18n';
 
 const filters = defineModel({ type: Object, required: true });
 defineProps({
@@ -16,15 +17,14 @@ defineProps({
 });
 const emit = defineEmits(['enable-location', 'reset']);
 
-const sortOptions = [
-  { value: 'recommended', label: 'Recommended for you' },
-  { value: 'distance', label: 'Nearest first' },
-  { value: 'newest', label: 'Newest members' },
-  { value: 'connections', label: 'Most connected' },
-  { value: 'rate', label: 'Lowest rate first' },
-];
+const { t } = useI18n();
+const sortOptions = computed(() =>
+  ['recommended', 'distance', 'newest', 'connections', 'rating', 'rate'].map((value) => ({ value, label: t(`filters.sort.${value}`) })),
+);
 
-const rateOptions = RATE_STEPS.map((v) => ({ value: v ?? '', label: v == null ? 'Any rate' : `Up to ${formatMoney(v)}` }));
+const rateOptions = computed(() =>
+  RATE_STEPS.map((v) => ({ value: v ?? '', label: v == null ? t('filters.anyRate') : t('common.upTo', { amount: formatMoney(v) }) })),
+);
 
 const availableOnly = computed({
   get: () => filters.value.availableOnly,
@@ -48,50 +48,50 @@ const sort = computed({
   set: (v) => (filters.value = { ...filters.value, sort: v }),
 });
 
-const formatDistance = (i) => (DISTANCE_STEPS[i] == null ? 'Any distance' : `Within ${DISTANCE_STEPS[i]} km`);
+const formatDistance = (i) => (DISTANCE_STEPS[i] == null ? t('common.anyDistance') : t('common.withinKm', { km: DISTANCE_STEPS[i] }));
 </script>
 
 <template>
   <div class="filters">
     <section class="filters__section">
-      <h3 class="filters__title"><Radar /> Distance</h3>
+      <h3 class="filters__title"><Radar /> {{ t('common.distance') }}</h3>
       <template v-if="hasLocation">
         <UiRange
           v-model="distanceIdx"
           :min="0"
           :max="DISTANCE_STEPS.length - 1"
           :step="1"
-          label="Search radius"
+          :label="t('filters.radius')"
           :format="formatDistance"
-          :marks="['1 km', 'Any']"
+          :marks="['1 km', t('filters.any')]"
         />
       </template>
       <div v-else class="filters__locate">
-        <p>Share your location to see how far people are and filter by range.</p>
+        <p>{{ t('filters.locateText') }}</p>
         <UiButton size="sm" variant="soft" :icon="LocateFixed" :loading="locating" @click="emit('enable-location')">
-          Enable location
+          {{ t('common.enableLocation') }}
         </UiButton>
         <p v-if="locationError" class="filters__error">{{ locationError }}</p>
       </div>
     </section>
 
     <section class="filters__section">
-      <h3 class="filters__title"><BriefcaseBusiness /> Hiring</h3>
-      <UiToggle v-model="availableOnly" label="Available for work" description="People open to new jobs and bookings" />
-      <UiSelect v-model="maxRate" :options="rateOptions" label="Maximum rate" aria-label="Maximum rate" />
+      <h3 class="filters__title"><BriefcaseBusiness /> {{ t('filters.hiring') }}</h3>
+      <UiToggle v-model="availableOnly" :label="t('discover.available')" :description="t('filters.availableText')" />
+      <UiSelect v-model="maxRate" :options="rateOptions" :label="t('filters.maxRate')" :aria-label="t('filters.maxRate')" />
     </section>
 
     <section class="filters__section">
-      <h3 class="filters__title"><Wifi /> Availability</h3>
-      <UiToggle v-model="onlineOnly" label="Online now" description="Only show people who are active right now" />
+      <h3 class="filters__title"><Wifi /> {{ t('filters.availability') }}</h3>
+      <UiToggle v-model="onlineOnly" :label="t('filters.onlineNow')" :description="t('filters.onlineText')" />
     </section>
 
     <section class="filters__section">
-      <h3 class="filters__title"><ArrowDownUp /> Sort by</h3>
-      <UiSelect v-model="sort" :options="sortOptions" aria-label="Sort results" />
+      <h3 class="filters__title"><ArrowDownUp /> {{ t('common.sortBy') }}</h3>
+      <UiSelect v-model="sort" :options="sortOptions" :aria-label="t('common.sortBy')" />
     </section>
 
-    <UiButton variant="ghost" size="sm" block @click="emit('reset')">Reset filters</UiButton>
+    <UiButton variant="ghost" size="sm" block @click="emit('reset')">{{ t('common.resetFilters') }}</UiButton>
   </div>
 </template>
 

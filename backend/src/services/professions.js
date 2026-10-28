@@ -156,7 +156,7 @@ export async function approveRequest(admin, request, { label, category, icon, hu
     const shouldAssign = r.id === request.id ? assign : requester.profession === 'other';
     if (shouldAssign) await requester.update({ profession: profession.key });
     if (r.userId !== admin.id) {
-      await notify({ userId: r.userId, actorId: admin.id, type: 'profession_approved', entityId: r.id });
+      await notify({ userId: r.userId, actorId: admin.id, type: 'profession_approved', entityId: r.id, data: { label: profession.label } });
     }
   }
   return { profession, resolved: resolved.length };
@@ -166,7 +166,13 @@ export async function rejectRequest(admin, request, note = '') {
   if (request.status !== 'pending') throw badRequest('This request has already been reviewed');
   await request.update({ status: 'rejected', reviewNote: note.trim(), reviewedById: admin.id, reviewedAt: new Date() });
   if (request.userId !== admin.id) {
-    await notify({ userId: request.userId, actorId: admin.id, type: 'profession_rejected', entityId: request.id });
+    await notify({
+      userId: request.userId,
+      actorId: admin.id,
+      type: 'profession_rejected',
+      entityId: request.id,
+      data: { label: request.label, note: request.reviewNote },
+    });
   }
   return request;
 }

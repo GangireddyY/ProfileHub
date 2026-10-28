@@ -16,9 +16,11 @@ import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import UiTabs from '@/components/ui/UiTabs.vue';
 import ListingCard from '@/components/market/ListingCard.vue';
 import MarketFilters from '@/components/market/MarketFilters.vue';
+import { useI18n } from 'vue-i18n';
 
 const DEFAULTS = { q: '', categories: [], conditions: [], minPrice: null, maxPrice: null, maxDistance: null, sort: 'newest' };
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const geo = useGeolocation();
 const route = useRoute();
@@ -39,14 +41,14 @@ const error = ref('');
 const myCount = ref(null);
 
 const isMine = computed(() => tab.value === 'mine');
-const sellerName = computed(() => (sellerId.value && items.value[0]?.seller?.name) || 'this member');
+const sellerName = computed(() => (sellerId.value && items.value[0]?.seller?.name) || t('market.thisMember'));
 const activeFilterCount = computed(() => {
   const f = filters.value;
   return (f.conditions.length ? 1 : 0) + (f.minPrice != null || f.maxPrice != null ? 1 : 0) + (f.maxDistance != null ? 1 : 0) + (f.sort !== 'newest' ? 1 : 0);
 });
 const tabs = computed(() => [
-  { key: 'browse', label: 'Browse', icon: Store },
-  { key: 'mine', label: 'My listings', icon: Tag, count: myCount.value ?? undefined },
+  { key: 'browse', label: t('market.browse'), icon: Store },
+  { key: 'mine', label: t('market.mine'), icon: Tag, count: myCount.value ?? undefined },
 ]);
 const stats = computed(() => {
   if (!isMine.value) return null;
@@ -122,7 +124,7 @@ const categoryFilter = computed({
   get: () => ({ categories: filters.value.categories }),
   set: ({ categories }) => (filters.value.categories = categories),
 });
-const categoryGroups = [{ key: 'categories', title: 'Categories', options: LISTING_CATEGORIES }];
+const categoryGroups = computed(() => [{ key: 'categories', title: t('common.categories'), options: LISTING_CATEGORIES.map((c) => ({ ...c })) }]);
 
 function resetFilters() {
   filters.value = { ...DEFAULTS, q: filters.value.q };
@@ -134,7 +136,7 @@ function clearSeller() {
 }
 
 async function enableLocation() {
-  if (await geo.locate()) toast.success('Location enabled');
+  if (await geo.locate()) toast.success(t('discover.locationOn'));
   else toast.error(geo.error.value);
 }
 
@@ -158,19 +160,19 @@ onMounted(() => {
       </UiCard>
       <UiCard class="sell-cta">
         <span class="sell-cta__icon"><PackageOpen /></span>
-        <strong>Got something to sell?</strong>
-        <p class="muted">List it in a minute. Buyers can message you directly.</p>
-        <UiButton to="/market/new" block :icon="Plus">Sell something</UiButton>
+        <strong>{{ t('market.sellTitle') }}</strong>
+        <p class="muted">{{ t('market.sellText') }}</p>
+        <UiButton to="/market/new" block :icon="Plus">{{ t('market.sellSomething') }}</UiButton>
       </UiCard>
     </aside>
 
     <section class="page-main">
       <header class="page-head">
         <div>
-          <h1 class="page-title">Marketplace</h1>
-          <p class="muted">Buy and sell locally: vehicles, books, furniture, electronics and more.</p>
+          <h1 class="page-title">{{ t('market.title') }}</h1>
+          <p class="muted">{{ t('market.lead') }}</p>
         </div>
-        <UiButton to="/market/new" :icon="Plus" class="head-sell">Sell</UiButton>
+        <UiButton to="/market/new" :icon="Plus" class="head-sell">{{ t('market.sell') }}</UiButton>
       </header>
 
       <UiTabs v-model="tab" :tabs="tabs" />
@@ -181,11 +183,11 @@ onMounted(() => {
           <input
             v-model.trim="filters.q"
             type="search"
-            :placeholder="isMine ? 'Search your listings' : 'Search cars, phones, sofas, books…'"
-            aria-label="Search listings"
+            :placeholder="isMine ? t('market.searchMine') : t('market.searchAll')"
+            :aria-label="t('market.searchLabel')"
             enterkeyhint="search"
           />
-          <button v-if="filters.q" type="button" class="searchbar__clear" aria-label="Clear search" @click="filters.q = ''">
+          <button v-if="filters.q" type="button" class="searchbar__clear" :aria-label="t('common.clearSearch')" @click="filters.q = ''">
             <X />
           </button>
         </label>
@@ -193,34 +195,34 @@ onMounted(() => {
           v-if="!isMine"
           v-model="categoryFilter"
           :groups="categoryGroups"
-          all-label="All categories"
-          placeholder="Search categories"
+          :all-label="t('common.allCategories')"
+          :placeholder="t('market.catPlaceholder')"
         />
-        <button v-if="!isMine" type="button" class="filter-btn" aria-label="Open filters" @click="filtersOpen = true">
+        <button v-if="!isMine" type="button" class="filter-btn" :aria-label="t('common.filters')" @click="filtersOpen = true">
           <SlidersHorizontal />
-          <span class="filter-btn__text">Filters</span>
+          <span class="filter-btn__text">{{ t('common.filters') }}</span>
           <span v-if="activeFilterCount" class="filter-btn__count">{{ activeFilterCount }}</span>
         </button>
       </div>
 
       <div v-if="!isMine && sellerId" class="seller-filter">
-        <UserRound /> Showing listings by <strong>{{ sellerName }}</strong>
-        <button type="button" aria-label="Show all listings" @click="clearSeller"><X /></button>
+        <UserRound /> {{ t('market.showingBy') }} <strong>{{ sellerName }}</strong>
+        <button type="button" :aria-label="t('market.showAll')" @click="clearSeller"><X /></button>
       </div>
 
       <div v-if="stats && items.length" class="my-stats">
-        <div><strong>{{ stats.active }}</strong><span>Active</span></div>
-        <div><strong>{{ stats.sold }}</strong><span>Sold</span></div>
-        <div><strong><Eye /> {{ stats.views }}</strong><span>Total views</span></div>
+        <div><strong>{{ stats.active }}</strong><span>{{ t('market.active') }}</span></div>
+        <div><strong>{{ stats.sold }}</strong><span>{{ t('market.sold') }}</span></div>
+        <div><strong><Eye /> {{ stats.views }}</strong><span>{{ t('market.views') }}</span></div>
       </div>
 
       <p v-if="!loading && !error" class="muted results">
-        <strong>{{ total }}</strong> {{ total === 1 ? 'listing' : 'listings' }}
+        <strong>{{ t('market.count', total) }}</strong>
       </p>
 
       <div v-if="error" class="error-box">
         <p>{{ error }}</p>
-        <UiButton size="sm" variant="secondary" @click="load()">Try again</UiButton>
+        <UiButton size="sm" variant="secondary" @click="load()">{{ t('common.tryAgain') }}</UiButton>
       </div>
 
       <div v-else-if="loading" class="grid">
@@ -238,13 +240,13 @@ onMounted(() => {
         <UiEmpty
           v-if="isMine"
           :icon="PackageOpen"
-          title="You haven't listed anything yet"
-          description="Sell your old phone, bike, books or furniture to people nearby."
+          :title="t('market.emptyMineTitle')"
+          :description="t('market.emptyMineText')"
         >
-          <UiButton to="/market/new" :icon="Plus">Create your first listing</UiButton>
+          <UiButton to="/market/new" :icon="Plus">{{ t('market.firstListing') }}</UiButton>
         </UiEmpty>
-        <UiEmpty v-else :icon="Store" title="Nothing matches" description="Try another category, widen the price range or clear your search.">
-          <UiButton variant="secondary" @click="resetFilters(); filters.categories = []; filters.q = ''">Clear filters</UiButton>
+        <UiEmpty v-else :icon="Store" :title="t('market.emptyTitle')" :description="t('market.emptyText')">
+          <UiButton variant="secondary" @click="resetFilters(); filters.categories = []; filters.q = ''">{{ t('common.clearFilters') }}</UiButton>
         </UiEmpty>
       </UiCard>
 
@@ -253,11 +255,11 @@ onMounted(() => {
       </TransitionGroup>
 
       <div v-if="!loading && page < pages" class="more">
-        <UiButton variant="secondary" :loading="loadingMore" @click="load({ append: true })">Load more</UiButton>
+        <UiButton variant="secondary" :loading="loadingMore" @click="load({ append: true })">{{ t('common.loadMore') }}</UiButton>
       </div>
     </section>
 
-    <UiSheet v-model:open="filtersOpen" title="Filters" width="440px">
+    <UiSheet v-model:open="filtersOpen" :title="t('common.filters')" width="440px">
       <MarketFilters
         v-model="filters"
         :has-location="me.hasLocation"
@@ -266,7 +268,7 @@ onMounted(() => {
         @enable-location="enableLocation"
       />
       <template #footer>
-        <UiButton block @click="filtersOpen = false">Show {{ total }} results</UiButton>
+        <UiButton block @click="filtersOpen = false">{{ t('common.showResults', { n: total }) }}</UiButton>
       </template>
     </UiSheet>
   </div>

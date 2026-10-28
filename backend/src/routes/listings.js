@@ -10,6 +10,8 @@ import { requireAuth } from '../middleware/auth.js';
 import { decorateUsers } from '../services/social.js';
 import { listingSearchClause } from '../services/search.js';
 import { limitsFor, limitsByPlan, limitsFrom, planLimit } from '../services/entitlements.js';
+import { blockedIdsFor, isBlockedBetween, ACTIVE_MEMBER } from '../services/safety.js';
+import { uploadLimiter } from '../middleware/limits.js';
 import {
   saveListingImage,
   removeListingImages,
@@ -184,8 +186,12 @@ router.get('/', async (req, res) => {
     distance: [['createdAt', 'DESC']],
   }[f.sort];
 
+  // Hide listings of sellers who are suspended, not yet approved, or in a block with the viewer.
+  const hidden = mine ? [] : [...(await blockedIdsFor(me.id))];
+  if (hidden.length) where[Op.and] = [...(where[Op.and] || []), { sellerId: { [Op.notIn]: hidden } }];
+  const seller = mine ? { model: User, as: 'seller' } : { model: User, as: 'seller', where: ACTIVE_MEMBER, required: true };
   const [candidates, planLimits] = await Promise.all([
-    Listing.findAll({ where, order, limit: 2000, include: [{ model: User, as: 'seller' }] }),
+    Listing.findAll({ where, order, limit: 2000, include: [seller] }),
     limitsByPlan(),
   ]);
   let rows = candidates.map((listing) => ({
@@ -219,9 +225,12 @@ router.get('/:id', async (req, res) => {
   const listing = await findListing(req.params.id);
   const isMine = listing.sellerId === me.id;
   if (!isMine && listing.status === 'archived') throw notFound('This listing is no longer available');
+  const seller = await User.findByPk(listing.sellerId);
+  if (!isMine && !me.isAdmin && (!seller?.isActiveMember || (await isBlockedBetween(me.id, listing.sellerId)))) {
+    throw notFound('This listing is no longer available');
+  }
   if (!isMine) await listing.increment('viewCount');
 
-  const seller = await User.findByPk(listing.sellerId);
   const [[decoratedSeller], more] = await Promise.all([
     seller ? decorateUsers(me, [seller]) : [null],
     Listing.findAll({
@@ -261,7 +270,7 @@ router.post('/', createLimiter, upload.array('images', MAX_LISTING_IMAGES), asyn
   res.status(201).json({ listing: listing.toPublic() });
 });
 
-router.put('/:id', upload.array('images', MAX_LISTING_IMAGES), async (req, res) => {
+router.put('/:id', uploadLimiter, upload.array('images', MAX_LISTING_IMAGES), async (req, res) => {
   const listing = await findOwnListing(req);
   const data = validate(listingSchema, req.body);
   const keep = validate(keepImagesSchema, req.body.keepImages).filter((url) => listing.images.includes(url));

@@ -1,4 +1,3 @@
-import { Op } from 'sequelize';
 import bcrypt from 'bcryptjs';
 import { sequelize } from '../config/db.js';
 import { env } from '../config/env.js';
@@ -13,6 +12,14 @@ import { ProfessionRequest } from './ProfessionRequest.js';
 import { Listing } from './Listing.js';
 import { Plan } from './Plan.js';
 import { PlanRequest } from './PlanRequest.js';
+import { Session } from './Session.js';
+import { Report } from './Report.js';
+import { Block } from './Block.js';
+import { AuthToken } from './AuthToken.js';
+import { PushSubscription } from './PushSubscription.js';
+import { ChatClear } from './ChatClear.js';
+import { AdminAction } from './AdminAction.js';
+import { Review } from './Review.js';
 import { ensureDefaultPlan } from '../services/plans.js';
 
 User.hasMany(Connection, { foreignKey: 'requesterId', as: 'sentRequests', onDelete: 'CASCADE' });
@@ -47,30 +54,59 @@ PlanRequest.belongsTo(User, { foreignKey: 'reviewedById', as: 'reviewer' });
 PlanRequest.belongsTo(Plan, { foreignKey: 'planId', as: 'plan' });
 User.hasMany(PlanRequest, { foreignKey: 'userId', as: 'planRequests', onDelete: 'CASCADE' });
 
-/** Creates the ADMIN_EMAIL account on first start, or makes sure it is still an active admin. */
+User.hasMany(Session, { foreignKey: 'userId', as: 'sessions', onDelete: 'CASCADE' });
+Session.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+
+Report.belongsTo(User, { foreignKey: 'reporterId', as: 'reporter' });
+Report.belongsTo(User, { foreignKey: 'targetUserId', as: 'targetUser' });
+Report.belongsTo(User, { foreignKey: 'reviewedById', as: 'reviewer' });
+
+Block.belongsTo(User, { foreignKey: 'blockedId', as: 'blocked' });
+
+Review.belongsTo(User, { foreignKey: 'reviewerId', as: 'reviewer' });
+Review.belongsTo(User, { foreignKey: 'revieweeId', as: 'reviewee' });
+
+/**
+ * Creates the ADMIN_EMAIL account on first start. An existing *member* account with that email is never
+ * promoted: anyone could have signed up with it first, so taking it over would hand them admin rights.
+ */
 async function ensureAdminAccount() {
   const { email, password, name } = env.adminAccount;
   if (!email) return;
   const existing = await User.findOne({ where: { email } });
   if (existing) {
-    if (existing.role !== 'admin' || existing.suspendedAt) await existing.update({ role: 'admin', suspendedAt: null });
+    if (existing.role !== 'admin') {
+      console.warn(
+        `ADMIN_EMAIL ${email} belongs to a member account that was not created as an admin, so it was not promoted. ` +
+          'Use a different ADMIN_EMAIL, or promote that account from the admin panel if it is really yours.',
+      );
+      return;
+    }
+    if (existing.suspendedAt || existing.approvalStatus !== 'approved') {
+      await existing.update({ suspendedAt: null, approvalStatus: 'approved' });
+    }
     return;
   }
   if (password.length < 8) {
     console.warn('ADMIN_EMAIL is set but ADMIN_PASSWORD is missing or shorter than 8 characters; admin not created.');
     return;
   }
-  await User.create({ name, email, passwordHash: await bcrypt.hash(password, 10), role: 'admin', profession: 'other' });
-  console.log(`Created admin account ${email}`);
+  await User.create({
+    name,
+    email,
+    passwordHash: await bcrypt.hash(password, 10),
+    role: 'admin',
+    approvalStatus: 'approved',
+    emailVerifiedAt: new Date(),
+    profession: 'other',
+  });
+  console.log(`Created admin account ${email}. You can now remove ADMIN_PASSWORD from .env.`);
 }
 
-/** Connect, apply any pending migrations and set up the admin accounts from the environment. */
+/** Connect, apply any pending migrations and set up the admin account from the environment. */
 export async function initDb() {
   await sequelize.authenticate();
   await migrator.up();
-  if (env.adminEmails.length) {
-    await User.update({ role: 'admin' }, { where: { email: { [Op.in]: env.adminEmails }, role: { [Op.ne]: 'admin' } } });
-  }
   await ensureAdminAccount();
   await ensureDefaultPlan();
 }
@@ -87,4 +123,12 @@ export {
   Listing,
   Plan,
   PlanRequest,
+  Session,
+  Report,
+  Block,
+  AuthToken,
+  PushSubscription,
+  ChatClear,
+  AdminAction,
+  Review,
 };

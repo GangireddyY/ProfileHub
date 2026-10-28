@@ -1,46 +1,58 @@
 import axios from 'axios';
 import { toast } from '@/composables/useToast';
 
-const TOKEN_KEY = 'ph_token';
-
 /*
- * Each tab keeps its own session in sessionStorage, so signing in as someone else in one tab (e.g. an admin)
- * never switches the account of the others. localStorage only remembers the latest sign-in, which a newly
- * opened tab adopts once when it loads.
+ * The session itself lives in an httpOnly cookie that page scripts can't read. Each tab only keeps a
+ * "slot" name (not a secret) telling the server which of the browser's session cookies to use, so different
+ * tabs can be signed in as different accounts. A new tab adopts the slot of the latest sign-in once.
  */
-if (!sessionStorage.getItem(TOKEN_KEY)) {
-  const latest = localStorage.getItem(TOKEN_KEY);
-  if (latest) sessionStorage.setItem(TOKEN_KEY, latest);
+const SLOT_KEY = 'ph_slot';
+const LAST_SLOT_KEY = 'ph_last_slot';
+const randomSlot = () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 16);
+
+// Tokens from before sessions moved to cookies are useless now; don't leave them lying around.
+sessionStorage.removeItem('ph_token');
+localStorage.removeItem('ph_token');
+
+if (!sessionStorage.getItem(SLOT_KEY)) {
+  sessionStorage.setItem(SLOT_KEY, localStorage.getItem(LAST_SLOT_KEY) || randomSlot());
 }
 
-export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+export const getSlot = () => sessionStorage.getItem(SLOT_KEY);
 
-export function saveToken(token) {
-  sessionStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
-export function clearToken() {
-  const token = getToken();
-  sessionStorage.removeItem(TOKEN_KEY);
-  if (localStorage.getItem(TOKEN_KEY) === token) localStorage.removeItem(TOKEN_KEY);
+/**
+ * A fresh slot for a new sign-in in this tab; other tabs keep theirs, and new tabs will open with this one.
+ * Returns a function that puts the previous slot back (e.g. when the password was wrong).
+ */
+export function startNewSlot() {
+  const previous = { slot: getSlot(), last: localStorage.getItem(LAST_SLOT_KEY) };
+  const slot = randomSlot();
+  sessionStorage.setItem(SLOT_KEY, slot);
+  localStorage.setItem(LAST_SLOT_KEY, slot);
+  return () => {
+    sessionStorage.setItem(SLOT_KEY, previous.slot);
+    if (previous.last) localStorage.setItem(LAST_SLOT_KEY, previous.last);
+    else localStorage.removeItem(LAST_SLOT_KEY);
+  };
 }
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
   timeout: 15000,
+  withCredentials: true,
 });
 
 api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers['X-PH-Slot'] = getSlot();
+  // Required by the server's CSRF guard on anything that changes data.
+  config.headers['X-PH-Client'] = 'web';
   return config;
 });
 
 api.interceptors.response.use(
   (res) => res,
   (error) => {
-    const isAuthCall = error.config?.url?.startsWith('/auth/login') || error.config?.url?.startsWith('/auth/signup');
+    const isAuthCall = ['/auth/login', '/auth/signup', '/auth/logout'].some((p) => error.config?.url?.startsWith(p));
     if (error.response?.status === 401 && !isAuthCall) {
       window.dispatchEvent(new CustomEvent('auth:expired', { detail: { message: error.response.data?.message } }));
     }

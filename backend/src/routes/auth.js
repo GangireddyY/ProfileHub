@@ -1,26 +1,28 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { User } from '../models/index.js';
-import { requireAuth, SUSPENDED_MESSAGE } from '../middleware/auth.js';
+import { requireAuth, accessProblem, PENDING_MESSAGE } from '../middleware/auth.js';
+import { signupLimiter, loginLimiter, emailLinkLimiter, tokenLimiter } from '../middleware/limits.js';
+import { consumeToken, sendVerificationEmail, sendPasswordResetEmail, sendPasswordChangedEmail } from '../services/accountEmails.js';
 import { buildSelf } from '../services/social.js';
 import { assertProfession, submitRequest } from '../services/professions.js';
 import { defaultPlan, planFields } from '../services/plans.js';
+import { notify } from '../services/notifications.js';
+import {
+  createSession,
+  resolveSession,
+  revokeSession,
+  revokeUserSessions,
+  tokenFrom,
+  setSessionCookie,
+  clearSessionCookie,
+} from '../services/sessions.js';
 import { professionRequestSchema } from './professions.js';
 import { RATE_UNITS, CURRENCIES } from '../constants/professions.js';
-import { signToken } from '../utils/token.js';
 import { validate, conflict, HttpError } from '../utils/http.js';
 
 const router = Router();
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 50,
-  standardHeaders: 'draft-8',
-  legacyHeaders: false,
-  message: { message: 'Too many attempts, please try again in a few minutes' },
-});
 
 const emailField = z
   .string({ error: 'Email is required' })
@@ -53,7 +55,8 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
-router.post('/signup', authLimiter, async (req, res) => {
+/** New accounts start "pending": they can't sign in until an admin approves them. */
+router.post('/signup', signupLimiter, async (req, res) => {
   const data = validate(signupSchema, req.body);
   const email = data.email.toLowerCase();
 
@@ -77,28 +80,92 @@ router.post('/signup', authLimiter, async (req, res) => {
     rateAmount: data.rateAmount ?? null,
     rateUnit: data.rateUnit,
     currency: data.currency,
+    role: 'member',
+    approvalStatus: 'pending',
   });
 
-  let professionRequest = null;
   if (data.requestedProfession) {
     try {
-      professionRequest = (await submitRequest(user, data.requestedProfession)).toPublic();
+      await submitRequest(user, data.requestedProfession);
     } catch {
       // The account matters more than the request; it can be re-sent from settings.
     }
   }
 
-  res.status(201).json({ token: signToken(user.id), user: await buildSelf(user), professionRequest });
+  const admins = await User.findAll({ where: { role: 'admin', suspendedAt: null }, attributes: ['id'] });
+  await Promise.all(admins.map((a) => notify({ userId: a.id, actorId: user.id, type: 'signup_request', entityId: user.id })));
+  sendVerificationEmail(user);
+
+  res.status(201).json({ pending: true, message: PENDING_MESSAGE, verificationSent: true });
 });
 
-router.post('/login', authLimiter, async (req, res) => {
+// ---------- Email verification & password reset ----------
+const tokenSchema = z.object({ token: z.string().trim().min(20, 'This link is not valid').max(100, 'This link is not valid') });
+const INVALID_LINK = 'This link is invalid or has expired. Ask for a new one.';
+/** Same answer whether or not the address has an account, so the form can't be used to look people up. */
+const GENERIC_SENT = "If there's an account for that email, we've sent a link to it. Check your inbox and spam folder.";
+
+router.post('/verify-email', tokenLimiter, async (req, res) => {
+  const { token } = validate(tokenSchema, req.body);
+  const user = await consumeToken(token, 'verify_email');
+  if (!user) throw new HttpError(400, INVALID_LINK, { code: 'invalid_token' });
+  if (!user.emailVerifiedAt) await user.update({ emailVerifiedAt: new Date() });
+  res.json({ verified: true, email: user.email, approved: user.approvalStatus === 'approved' });
+});
+
+router.post('/resend-verification', emailLinkLimiter, async (req, res) => {
+  const { email } = validate(z.object({ email: emailField }), req.body);
+  const user = await User.findOne({ where: { email } });
+  if (user && !user.emailVerifiedAt && !user.suspendedAt) await sendVerificationEmail(user);
+  res.json({ message: GENERIC_SENT });
+});
+
+router.post('/forgot-password', emailLinkLimiter, async (req, res) => {
+  const { email } = validate(z.object({ email: emailField }), req.body);
+  const user = await User.findOne({ where: { email } });
+  if (user && user.approvalStatus !== 'rejected') await sendPasswordResetEmail(user);
+  res.json({ message: GENERIC_SENT });
+});
+
+router.post('/reset-password', tokenLimiter, async (req, res) => {
+  const { token, password } = validate(
+    tokenSchema.extend({ password: z.string().min(8, 'Password must be at least 8 characters').max(100, 'Password is too long') }),
+    req.body,
+  );
+  const user = await consumeToken(token, 'reset_password');
+  if (!user) throw new HttpError(400, INVALID_LINK, { code: 'invalid_token' });
+  await user.update({
+    passwordHash: await bcrypt.hash(password, 10),
+    passwordChangedAt: new Date(),
+    // Opening the emailed link proves the address belongs to them.
+    emailVerifiedAt: user.emailVerifiedAt || new Date(),
+  });
+  const signedOut = await revokeUserSessions(user.id);
+  sendPasswordChangedEmail(user);
+  const problem = accessProblem(user);
+  res.json({ reset: true, signedOut, canSignIn: !problem, message: problem?.message ?? null });
+});
+
+router.post('/login', loginLimiter, async (req, res) => {
   const { email, password } = validate(loginSchema, req.body);
   const user = await User.unscoped().findOne({ where: { email: email.toLowerCase() } });
   const valid = user && (await bcrypt.compare(password, user.passwordHash));
   if (!valid) throw new HttpError(401, 'Incorrect email or password');
-  if (user.suspendedAt) throw new HttpError(403, SUSPENDED_MESSAGE);
+  const problem = accessProblem(user);
+  if (problem) throw new HttpError(403, problem.message, { code: problem.code });
 
-  res.json({ token: signToken(user.id), user: await buildSelf(user) });
+  const { token, session } = await createSession(user, req);
+  setSessionCookie(res, req.get('x-ph-slot'), token, session.expiresAt);
+  res.json({ user: await buildSelf(user) });
+});
+
+/** Ends this tab's session on the server, not just in the browser. */
+router.post('/logout', async (req, res) => {
+  const slot = req.get('x-ph-slot');
+  const found = await resolveSession(tokenFrom(req.headers.cookie, slot));
+  if (found) await revokeSession(found.session.id);
+  clearSessionCookie(res, slot);
+  res.status(204).end();
 });
 
 router.get('/me', requireAuth, async (req, res) => {

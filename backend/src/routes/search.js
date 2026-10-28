@@ -8,6 +8,8 @@ import { activeProfessions } from '../services/professions.js';
 import { userSearchClause, listingSearchClause } from '../services/search.js';
 import { haversineKm } from '../utils/geo.js';
 import { validate } from '../utils/http.js';
+import { blockedIdsFor, ACTIVE_MEMBER } from '../services/safety.js';
+import { searchLimiter } from '../middleware/limits.js';
 
 /** One search box for people, professions and marketplace items. */
 const router = Router();
@@ -18,10 +20,11 @@ const schema = z.object({
   limit: z.coerce.number().int().min(1).max(24).optional().default(8),
 });
 
-router.get('/', async (req, res) => {
+router.get('/', searchLimiter, async (req, res) => {
   const me = req.user;
   const { q, limit } = validate(schema, req.query);
   const term = q.toLowerCase();
+  const hidden = [...(await blockedIdsFor(me.id))];
 
   const professionMatches = (await activeProfessions())
     .filter((p) => p.label.toLowerCase().includes(term))
@@ -29,22 +32,28 @@ router.get('/', async (req, res) => {
     .slice(0, 12);
 
   const peopleWhere = {
-    id: { [Op.ne]: me.id },
+    id: { [Op.notIn]: [me.id, ...hidden] },
     discoverable: true,
-    suspendedAt: null,
+    ...ACTIVE_MEMBER,
     [Op.and]: [await userSearchClause(q)],
   };
-  const listingWhere = { status: 'active', [Op.and]: [listingSearchClause(q)] };
+  const listingWhere = {
+    status: 'active',
+    ...(hidden.length ? { sellerId: { [Op.notIn]: hidden } } : {}),
+    [Op.and]: [listingSearchClause(q)],
+  };
+  // Only listings from members who can still be contacted.
+  const activeSeller = { model: User, as: 'seller', where: ACTIVE_MEMBER, required: true };
 
   const [people, peopleTotal, listings, listingTotal, counts] = await Promise.all([
     User.findAll({ where: peopleWhere, order: [['isOnline', 'DESC'], ['createdAt', 'DESC']], limit }),
     User.count({ where: peopleWhere }),
-    Listing.findAll({ where: listingWhere, order: [['createdAt', 'DESC']], limit, include: [{ model: User, as: 'seller' }] }),
-    Listing.count({ where: listingWhere }),
+    Listing.findAll({ where: listingWhere, order: [['createdAt', 'DESC']], limit, include: [activeSeller] }),
+    Listing.count({ where: listingWhere, include: [{ ...activeSeller, attributes: [] }] }),
     professionMatches.length
       ? User.findAll({
           attributes: ['profession', [fn('COUNT', col('id')), 'count']],
-          where: { discoverable: true, suspendedAt: null, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
+          where: { discoverable: true, ...ACTIVE_MEMBER, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
           group: ['profession'],
           raw: true,
         })

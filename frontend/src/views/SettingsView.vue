@@ -29,9 +29,17 @@ import {
   Pencil,
   House,
   Crown,
+  MonitorSmartphone,
   Award,
   BadgeIndianRupee,
+  BellRing,
+  MailWarning,
+  Languages,
+  Star,
 } from 'lucide-vue-next';
+import { useI18n } from 'vue-i18n';
+import NotificationPrefs from '@/components/settings/NotificationPrefs.vue';
+import LanguageSwitcher from '@/components/LanguageSwitcher.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import { useProfessionsStore } from '@/stores/professions';
@@ -44,6 +52,7 @@ import UiSelect from '@/components/ui/UiSelect.vue';
 import { formatRate } from '@/utils/format';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import LocationCard from '@/components/LocationCard.vue';
+import AccountSafety from '@/components/settings/AccountSafety.vue';
 import { formatPlanPrice, formatDate } from '@/constants/plans';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiInput from '@/components/ui/UiInput.vue';
@@ -68,15 +77,35 @@ const me = computed(() => auth.user);
 
 const professions = useProfessionsStore();
 
-const sections = [
-  { id: 'profile', label: 'Profile', icon: UserRound },
-  { id: 'work', label: 'Work & rates', icon: BriefcaseBusiness },
-  { id: 'contact', label: 'Contact details', icon: Contact },
-  { id: 'location', label: 'Location & discovery', icon: MapPin },
-  { id: 'security', label: 'Security', icon: KeyRound },
-  { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-];
+const { t } = useI18n();
+const sections = computed(() =>
+  [
+    { id: 'profile', icon: UserRound },
+    { id: 'work', icon: BriefcaseBusiness },
+    { id: 'contact', icon: Contact },
+    { id: 'location', icon: MapPin },
+    { id: 'notifications', icon: BellRing },
+    { id: 'security', icon: KeyRound },
+    { id: 'sessions', icon: MonitorSmartphone },
+    { id: 'privacy', icon: ShieldCheck },
+    { id: 'appearance', icon: Palette },
+  ].map((s) => ({ ...s, label: t(`settings.sections.${s.id}`) })),
+);
+
+// ---------- Email verification ----------
+const verifySending = ref(false);
+async function sendVerification() {
+  verifySending.value = true;
+  try {
+    const data = await auth.resendVerification();
+    if (data.alreadyVerified) await auth.fetchMe();
+    toast.success(data.message || t('auth.checkInbox'));
+  } catch (err) {
+    toast.error(errorMessage(err));
+  } finally {
+    verifySending.value = false;
+  }
+}
 
 // ---------- Profile ----------
 const pickProfile = (u) => ({
@@ -113,7 +142,7 @@ async function saveProfile() {
     });
     Object.assign(form, pickProfile(me.value));
     editing.value = false;
-    toast.success('Profile saved');
+    toast.success(t('settings.saved'));
   } catch (err) {
     errors.value = fieldErrors(err);
     toast.error(errorMessage(err));
@@ -142,22 +171,28 @@ function cancelEdit() {
 
 const summary = computed(() => {
   const u = me.value;
+  const s = (key, params) => t(`settings.summary.${key}`, params);
   return [
-    { label: 'City', value: u.city, icon: MapPin },
-    { label: 'Experience', value: u.experienceYears ? `${u.experienceYears}+ years` : 'Getting started', icon: Award },
-    { label: 'Rate', value: formatRate(u) || 'Not set', icon: BadgeIndianRupee },
-    { label: 'Availability', value: u.availableForWork ? 'Available for work' : 'Not looking right now', icon: BriefcaseBusiness },
-    { label: 'Email', value: u.contactEmail, icon: Mail, href: u.contactEmail && `mailto:${u.contactEmail}` },
-    { label: 'Mobile', value: u.phone, icon: Phone, href: u.phone && `tel:${u.phone.replace(/[\s-]/g, '')}` },
+    { label: s('city'), value: u.city, icon: MapPin },
+    { label: s('experience'), value: u.experienceYears ? s('years', { n: u.experienceYears }) : s('gettingStarted'), icon: Award },
+    { label: s('rate'), value: formatRate(u) || t('common.notSet'), icon: BadgeIndianRupee },
+    { label: s('availability'), value: u.availableForWork ? s('available') : s('notLooking'), icon: BriefcaseBusiness },
     {
-      label: 'Membership plan',
+      label: s('rating'),
+      value: u.rating?.count ? t('reviews.summary', { avg: u.rating.average, n: u.rating.count }, u.rating.count) : t('card.noReviews'),
+      icon: Star,
+    },
+    { label: s('email'), value: u.contactEmail, icon: Mail, href: u.contactEmail && `mailto:${u.contactEmail}` },
+    { label: s('mobile'), value: u.phone, icon: Phone, href: u.phone && `tel:${u.phone.replace(/[\s-]/g, '')}` },
+    {
+      label: s('plan'),
       value: u.plan
-        ? `${u.plan.name} · ${formatPlanPrice(u.plan)}${u.planExpiresAt ? ` · until ${formatDate(u.planExpiresAt)}` : ''}`
-        : 'Free member',
+        ? `${u.plan.name} · ${formatPlanPrice(u.plan)}${u.planExpiresAt ? ` · ${s('until', { date: formatDate(u.planExpiresAt) })}` : ''}`
+        : s('freeMember'),
       icon: Crown,
       to: '/plans',
     },
-    { label: 'Address', value: u.address, icon: House, wide: true },
+    { label: s('address'), value: u.address, icon: House, wide: true },
   ];
 });
 
@@ -206,11 +241,11 @@ const shareLocation = computed({
     pending.location = true;
     try {
       if (on) {
-        if (await geo.locate()) toast.success('Location sharing is on');
+        if (await geo.locate()) toast.success(t('settings.locationOn'));
         else toast.error(geo.error.value);
       } else {
         await auth.clearLocation();
-        toast.success('Location sharing is off and your coordinates were removed');
+        toast.success(t('settings.locationOff'));
       }
     } catch (err) {
       toast.error(errorMessage(err));
@@ -222,12 +257,12 @@ const shareLocation = computed({
 
 const showOnline = computed({
   get: () => me.value.showOnlineStatus,
-  set: (v) => setSetting('showOnlineStatus', v, v ? 'Others can see when you are online' : 'You now appear offline to everyone'),
+  set: (v) => setSetting('showOnlineStatus', v, v ? t('settings.onlineVisible') : t('settings.onlineHidden')),
 });
 
 const discoverable = computed({
   get: () => me.value.discoverable,
-  set: (v) => setSetting('discoverable', v, v ? 'Your profile appears in Discover' : 'Your profile is hidden from Discover'),
+  set: (v) => setSetting('discoverable', v, v ? t('settings.discoverOn') : t('settings.discoverOff')),
 });
 
 const RADIUS_STEPS = DISTANCE_STEPS.filter((s) => s != null);
@@ -238,11 +273,11 @@ watch(radiusIdx, (i) => {
   radiusTimer = setTimeout(() => setSetting('discoveryRadiusKm', RADIUS_STEPS[i]), 500);
 });
 
-const themeOptions = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
-];
+const themeOptions = computed(() => [
+  { value: 'light', label: t('settings.theme.light'), icon: Sun },
+  { value: 'dark', label: t('settings.theme.dark'), icon: Moon },
+  { value: 'system', label: t('settings.theme.system'), icon: Monitor },
+]);
 
 async function scrollTo(id) {
   if (FORM_SECTIONS.includes(id) && !editing.value) {
@@ -264,15 +299,15 @@ const pwSaving = ref(false);
 
 async function changePassword() {
   pwErrors.value = {};
-  if (pw.newPassword.length < 8) pwErrors.value.newPassword = 'Use at least 8 characters';
-  if (pw.newPassword !== pw.confirm) pwErrors.value.confirm = 'Passwords do not match';
+  if (pw.newPassword.length < 8) pwErrors.value.newPassword = t('auth.min8');
+  if (pw.newPassword !== pw.confirm) pwErrors.value.confirm = t('auth.mismatch');
   if (Object.keys(pwErrors.value).length) return;
 
   pwSaving.value = true;
   try {
-    await auth.changePassword({ currentPassword: pw.currentPassword, newPassword: pw.newPassword });
+    const signedOut = await auth.changePassword({ currentPassword: pw.currentPassword, newPassword: pw.newPassword });
     Object.assign(pw, { currentPassword: '', newPassword: '', confirm: '' });
-    toast.success('Password updated. Other devices have been signed out.');
+    toast.success(signedOut ? t('settings.passwordUpdatedOthers', { n: signedOut }, signedOut) : t('settings.passwordUpdated'));
   } catch (err) {
     pwErrors.value = fieldErrors(err);
     if (!Object.keys(pwErrors.value).length) toast.error(errorMessage(err));
@@ -299,7 +334,7 @@ async function deleteAccount() {
   try {
     await auth.deleteAccount(deletePassword.value);
     deleteOpen.value = false;
-    toast.info('Your account has been deleted. Sorry to see you go.');
+    toast.info(t('settings.deleted'));
     router.replace({ name: 'signup' });
   } catch (err) {
     deleteError.value = errorMessage(err);
@@ -320,7 +355,7 @@ async function deleteAccount() {
             <span class="muted truncate" style="display: block; font-size: 0.82rem">{{ me.email }}</span>
           </div>
         </header>
-        <nav class="nav-list" aria-label="Settings sections">
+        <nav class="nav-list" :aria-label="t('settings.sectionsLabel')">
           <button v-for="s in sections" :key="s.id" type="button" class="nav-link" @click="scrollTo(s.id)">
             <component :is="s.icon" /> {{ s.label }}
           </button>
@@ -332,10 +367,19 @@ async function deleteAccount() {
       <BackButton />
       <header class="page-head">
         <div>
-          <h1 class="page-title">Settings</h1>
-          <p class="muted">Manage your profile, privacy and account.</p>
+          <h1 class="page-title">{{ t('settings.title') }}</h1>
+          <p class="muted">{{ t('settings.lead') }}</p>
         </div>
       </header>
+
+      <div v-if="!me.emailVerifiedAt" class="verify-banner" role="status">
+        <span class="verify-banner__icon"><MailWarning /></span>
+        <div class="grow" style="min-width: 0">
+          <strong>{{ t('settings.emailUnverified') }}</strong>
+          <p class="muted">{{ t('settings.emailUnverifiedText', { email: me.email }) }}</p>
+        </div>
+        <UiButton size="sm" :loading="verifySending" @click="sendVerification">{{ t('settings.sendConfirmation') }}</UiButton>
+      </div>
 
       <div class="settings__grid">
         <!-- Profile -->
@@ -343,9 +387,9 @@ async function deleteAccount() {
           <header class="section__head">
             <span class="section__icon"><UserRound /></span>
             <div>
-              <h2 class="section-title">Profile</h2>
+              <h2 class="section-title">{{ t('settings.sections.profile') }}</h2>
               <p class="muted">
-                {{ editing ? 'Update your details, then save.' : 'This is what other members see on your profile.' }}
+                {{ editing ? t('settings.profileEditing') : t('settings.profileViewing') }}
               </p>
             </div>
           </header>
@@ -355,13 +399,13 @@ async function deleteAccount() {
               <UiAvatar :name="me.name" :src="me.avatarUrl" :size="72" />
               <div class="summary__who">
                 <strong class="summary__name">{{ me.name }}</strong>
-                <span class="muted">{{ me.roleTitle || 'Add your role or title' }}</span>
+                <span class="muted">{{ me.roleTitle || t('settings.addRole') }}</span>
                 <p v-if="me.headline" class="summary__headline">{{ me.headline }}</p>
                 <ProfessionBadge :profession="me.profession" size="sm" />
               </div>
               <div class="summary__actions">
-                <UiButton variant="secondary" size="sm" :icon="Eye" :to="`/u/${me.id}`">View public profile</UiButton>
-                <UiButton size="sm" :icon="Pencil" @click="startEdit">Edit profile</UiButton>
+                <UiButton variant="secondary" size="sm" :icon="Eye" :to="`/u/${me.id}`">{{ t('settings.viewPublic') }}</UiButton>
+                <UiButton size="sm" :icon="Pencil" @click="startEdit">{{ t('settings.editProfile') }}</UiButton>
               </div>
             </div>
 
@@ -371,26 +415,26 @@ async function deleteAccount() {
                 <div class="summary__text">
                   <dt>{{ row.label }}</dt>
                   <dd v-if="row.to">
-                    {{ row.value }} · <RouterLink :to="row.to" class="summary__link">View plans</RouterLink>
+                    {{ row.value }} · <RouterLink :to="row.to" class="summary__link">{{ t('common.viewPlans') }}</RouterLink>
                   </dd>
                   <dd v-else-if="row.value && row.href"><a :href="row.href">{{ row.value }}</a></dd>
                   <dd v-else-if="row.value">{{ row.value }}</dd>
-                  <dd v-else class="summary__empty">Not added</dd>
+                  <dd v-else class="summary__empty">{{ t('common.notAdded') }}</dd>
                 </div>
               </div>
             </dl>
 
             <div class="summary__block">
-              <h3 class="summary__label">About</h3>
+              <h3 class="summary__label">{{ t('settings.about') }}</h3>
               <p v-if="me.bio" class="summary__bio">{{ me.bio }}</p>
-              <p v-else class="summary__empty">Tell people about your work, interests and what you're looking for.</p>
+              <p v-else class="summary__empty">{{ t('settings.aboutEmpty') }}</p>
             </div>
             <div class="summary__block">
-              <h3 class="summary__label">Skills</h3>
+              <h3 class="summary__label">{{ t('settings.skills') }}</h3>
               <div v-if="me.skills?.length" class="summary__skills">
                 <span v-for="s in me.skills" :key="s" class="summary__skill">{{ s }}</span>
               </div>
-              <p v-else class="summary__empty">No skills added yet.</p>
+              <p v-else class="summary__empty">{{ t('settings.skillsEmpty') }}</p>
             </div>
           </div>
 
@@ -398,20 +442,26 @@ async function deleteAccount() {
             <AvatarUploader />
 
             <div class="form-grid form-grid--2">
-              <UiInput v-model="form.name" label="Full name" maxlength="80" :error="errors.name" autocomplete="name" />
-              <UiInput v-model="form.roleTitle" label="Role / title" maxlength="100" placeholder="e.g. Pediatrician" :error="errors.roleTitle" />
+              <UiInput v-model="form.name" :label="t('settings.form.fullName')" maxlength="80" :error="errors.name" autocomplete="name" />
+              <UiInput
+                v-model="form.roleTitle"
+                :label="t('settings.form.roleTitle')"
+                maxlength="100"
+                :placeholder="t('settings.form.roleTitlePh')"
+                :error="errors.roleTitle"
+              />
               <UiInput
                 v-model="form.headline"
                 class="span-2"
-                label="Headline"
+                :label="t('settings.form.headline')"
                 maxlength="160"
-                placeholder="A one-liner about what you do"
+                :placeholder="t('settings.form.headlinePh')"
                 :error="errors.headline"
               />
-              <UiInput v-model="form.city" label="City" maxlength="100" placeholder="e.g. Bengaluru" :error="errors.city" />
+              <UiInput v-model="form.city" :label="t('settings.form.city')" maxlength="100" :placeholder="t('settings.form.cityPh')" :error="errors.city" />
               <UiInput
                 v-model.number="form.experienceYears"
-                label="Years of experience"
+                :label="t('settings.form.years')"
                 type="number"
                 min="0"
                 max="70"
@@ -422,7 +472,7 @@ async function deleteAccount() {
 
             <ProfessionPicker
               v-model="form.profession"
-              label="Profession"
+              :label="t('settings.form.profession')"
               :error="errors.profession"
               :request-handler="requestProfession"
             />
@@ -442,28 +492,28 @@ async function deleteAccount() {
               <header class="work__head">
                 <span class="section__icon"><BriefcaseBusiness /></span>
                 <div>
-                  <h3 class="section-title">Work &amp; rates</h3>
-                  <p class="muted">Tell people you're open to work and what you charge. Shown on your profile and cards.</p>
+                  <h3 class="section-title">{{ t('settings.form.workTitle') }}</h3>
+                  <p class="muted">{{ t('settings.form.workLead') }}</p>
                 </div>
               </header>
               <UiToggle
                 v-model="form.availableForWork"
-                label="Available for work"
-                description="Shows an “Available” badge and includes you in the hiring filter on Discover."
+                :label="t('settings.form.available')"
+                :description="t('settings.form.availableText')"
               />
               <div class="rate-grid">
-                <UiSelect v-model="form.currency" label="Currency" :options="CURRENCIES" />
+                <UiSelect v-model="form.currency" :label="t('settings.form.currency')" :options="CURRENCIES" />
                 <UiInput
                   v-model="form.rateAmount"
-                  label="Your rate"
+                  :label="t('settings.form.rate')"
                   type="number"
                   min="1"
                   inputmode="numeric"
-                  placeholder="e.g. 500"
+                  :placeholder="t('settings.form.ratePh')"
                   :error="errors.rateAmount"
-                  hint="Leave empty to hide your rate"
+                  :hint="t('settings.form.rateHint')"
                 />
-                <UiSelect v-model="form.rateUnit" label="Charged" :options="unitOptions" :error="errors.rateUnit" />
+                <UiSelect v-model="form.rateUnit" :label="t('settings.form.charged')" :options="unitOptions" :error="errors.rateUnit" />
               </div>
             </section>
 
@@ -471,28 +521,28 @@ async function deleteAccount() {
               <header class="work__head">
                 <span class="section__icon"><Contact /></span>
                 <div>
-                  <h3 class="section-title">Contact details</h3>
+                  <h3 class="section-title">{{ t('settings.form.contactTitle') }}</h3>
                   <p class="muted">
-                    Only you and your connections can see these. Leave a field empty to keep it private. See how we protect them in our
-                    <RouterLink to="/privacy#visibility" class="summary__link">Privacy policy</RouterLink>.
+                    {{ t('settings.form.contactLead') }}
+                    <RouterLink to="/privacy#visibility" class="summary__link">{{ t('nav.privacy') }}</RouterLink>.
                   </p>
                 </div>
               </header>
               <div class="form-grid form-grid--2">
                 <UiInput
                   v-model.trim="form.contactEmail"
-                  label="Email"
+                  :label="t('settings.form.email')"
                   type="email"
                   maxlength="160"
                   :icon="Mail"
                   :placeholder="me.email"
                   autocomplete="email"
                   :error="errors.contactEmail"
-                  hint="Can differ from the email you sign in with"
+                  :hint="t('settings.form.emailHint')"
                 />
                 <UiInput
                   v-model.trim="form.phone"
-                  label="Mobile number"
+                  :label="t('settings.form.mobile')"
                   type="tel"
                   maxlength="20"
                   :icon="Phone"
@@ -504,22 +554,29 @@ async function deleteAccount() {
               </div>
               <UiTextarea
                 v-model="form.address"
-                label="Address"
+                :label="t('settings.form.address')"
                 :maxlength="300"
                 :rows="3"
-                placeholder="House / flat, street, area, city, PIN code"
+                :placeholder="t('settings.form.addressPh')"
                 autocomplete="street-address"
                 :error="errors.address"
               />
             </section>
-            <UiTextarea v-model="form.bio" label="About" :maxlength="2000" :rows="5" placeholder="Tell people about your work, interests and what you're looking for." :error="errors.bio" />
-            <UiTagInput v-model="form.skills" label="Skills" placeholder="Add a skill and press Enter" :error="errors.skills" />
+            <UiTextarea
+              v-model="form.bio"
+              :label="t('settings.form.about')"
+              :maxlength="2000"
+              :rows="5"
+              :placeholder="t('settings.aboutEmpty')"
+              :error="errors.bio"
+            />
+            <UiTagInput v-model="form.skills" :label="t('settings.form.skills')" :placeholder="t('settings.form.skillsPh')" :error="errors.skills" />
 
             <div class="form-actions" :class="{ 'is-dirty': dirty }">
-              <span v-if="dirty" class="muted">You have unsaved changes</span>
+              <span v-if="dirty" class="muted">{{ t('settings.unsaved') }}</span>
               <div class="row" style="margin-left: auto">
-                <UiButton variant="ghost" :disabled="saving" @click="cancelEdit">Cancel</UiButton>
-                <UiButton type="submit" :icon="Save" :loading="saving" :disabled="!dirty">Save changes</UiButton>
+                <UiButton variant="ghost" :disabled="saving" @click="cancelEdit">{{ t('common.cancel') }}</UiButton>
+                <UiButton type="submit" :icon="Save" :loading="saving" :disabled="!dirty">{{ t('common.saveChanges') }}</UiButton>
               </div>
             </div>
           </form>
@@ -530,8 +587,8 @@ async function deleteAccount() {
           <header class="section__head">
             <span class="section__icon"><MapPin /></span>
             <div>
-              <h2 class="section-title">Location & discovery</h2>
-              <p class="muted">Control how distance-based discovery works for you.</p>
+              <h2 class="section-title">{{ t('settings.locationTitle') }}</h2>
+              <p class="muted">{{ t('settings.locationLead') }}</p>
             </div>
           </header>
 
@@ -539,8 +596,8 @@ async function deleteAccount() {
             <UiToggle
               v-model="shareLocation"
               :icon="LocateFixed"
-              label="Share my location"
-              description="Lets you filter by range and shows others how far you are. Your exact coordinates are never shown."
+              :label="t('settings.shareLocation')"
+              :description="t('settings.shareLocationText')"
               :loading="pending.location || geo.loading.value"
             />
 
@@ -551,7 +608,7 @@ async function deleteAccount() {
               v-model="radiusIdx"
               :min="0"
               :max="RADIUS_STEPS.length - 1"
-              label="Default discovery radius"
+              :label="t('settings.radius')"
               :format="(i) => `${RADIUS_STEPS[i]} km`"
               :disabled="!me.hasLocation"
               :marks="['1 km', '500 km']"
@@ -560,11 +617,23 @@ async function deleteAccount() {
             <UiToggle
               v-model="discoverable"
               :icon="Eye"
-              label="Show me in Discover"
-              description="When off, people can still open your profile via a direct link or your network."
+              :label="t('settings.discoverable')"
+              :description="t('settings.discoverableText')"
               :loading="pending.discoverable"
             />
           </div>
+        </UiCard>
+
+        <!-- Notifications -->
+        <UiCard id="notifications" class="section">
+          <header class="section__head">
+            <span class="section__icon"><BellRing /></span>
+            <div>
+              <h2 class="section-title">{{ t('notify.title') }}</h2>
+              <p class="muted">{{ t('notify.lead') }}</p>
+            </div>
+          </header>
+          <NotificationPrefs />
         </UiCard>
 
         <!-- Security -->
@@ -572,14 +641,14 @@ async function deleteAccount() {
           <header class="section__head">
             <span class="section__icon"><KeyRound /></span>
             <div>
-              <h2 class="section-title">Security</h2>
-              <p class="muted">Changing your password signs you out on every other device.</p>
+              <h2 class="section-title">{{ t('settings.securityTitle') }}</h2>
+              <p class="muted">{{ t('settings.securityLead') }}</p>
             </div>
           </header>
           <form class="stack" style="--gap: 16px" novalidate @submit.prevent="changePassword">
             <UiInput
               v-model="pw.currentPassword"
-              label="Current password"
+              :label="t('settings.currentPassword')"
               type="password"
               autocomplete="current-password"
               :error="pwErrors.currentPassword"
@@ -587,26 +656,41 @@ async function deleteAccount() {
             <div class="form-grid form-grid--2">
               <UiInput
                 v-model="pw.newPassword"
-                label="New password"
+                :label="t('settings.newPassword')"
                 type="password"
                 autocomplete="new-password"
                 :error="pwErrors.newPassword"
-                hint="At least 8 characters"
+                :hint="t('auth.passwordHint')"
               />
               <UiInput
                 v-model="pw.confirm"
-                label="Confirm new password"
+                :label="t('settings.confirmPassword')"
                 type="password"
                 autocomplete="new-password"
                 :error="pwErrors.confirm"
               />
             </div>
-            <div class="row" style="justify-content: flex-end">
+            <div class="row" style="justify-content: space-between; flex-wrap: wrap">
+              <RouterLink :to="{ name: 'forgot-password', query: { email: me.email } }" class="summary__link forgot-link">
+                {{ t('settings.forgotLink') }}
+              </RouterLink>
               <UiButton type="submit" :loading="pwSaving" :disabled="!pw.currentPassword || !pw.newPassword">
-                Update password
+                {{ t('settings.updatePassword') }}
               </UiButton>
             </div>
           </form>
+        </UiCard>
+
+        <!-- Sessions, blocks and data -->
+        <UiCard id="sessions" class="section section--full">
+          <header class="section__head">
+            <span class="section__icon"><MonitorSmartphone /></span>
+            <div>
+              <h2 class="section-title">{{ t('settings.sessionsTitle') }}</h2>
+              <p class="muted">{{ t('settings.sessionsLead') }}</p>
+            </div>
+          </header>
+          <AccountSafety />
         </UiCard>
 
         <!-- Privacy -->
@@ -614,29 +698,30 @@ async function deleteAccount() {
           <header class="section__head">
             <span class="section__icon"><ShieldCheck /></span>
             <div>
-              <h2 class="section-title">Privacy</h2>
-              <p class="muted">Choose what others can see about your activity.</p>
+              <h2 class="section-title">{{ t('settings.privacyTitle') }}</h2>
+              <p class="muted">{{ t('settings.privacyLead') }}</p>
             </div>
           </header>
           <UiToggle
             v-model="showOnline"
             :icon="Wifi"
-            label="Show online status"
-            description="When off, you appear offline and your last-seen time is hidden."
+            :label="t('settings.showOnline')"
+            :description="t('settings.showOnlineText')"
             :loading="pending.showOnlineStatus"
           />
         </UiCard>
 
-        <!-- Appearance -->
+        <!-- Appearance & language -->
         <UiCard id="appearance" class="section">
           <header class="section__head">
             <span class="section__icon"><Palette /></span>
             <div>
-              <h2 class="section-title">Appearance</h2>
-              <p class="muted">Pick a theme or follow your device.</p>
+              <h2 class="section-title">{{ t('settings.appearanceTitle') }}</h2>
+              <p class="muted">{{ t('settings.appearanceLead') }}</p>
             </div>
           </header>
-          <div class="theme-grid" role="radiogroup" aria-label="Theme">
+          <h3 class="summary__label appearance-label">{{ t('settings.themeLabel') }}</h3>
+          <div class="theme-grid" role="radiogroup" :aria-label="t('settings.themeLabel')">
             <button
               v-for="o in themeOptions"
               :key="o.value"
@@ -651,6 +736,9 @@ async function deleteAccount() {
               <span class="row" style="--gap: 6px"><component :is="o.icon" /> {{ o.label }}</span>
             </button>
           </div>
+          <h3 class="summary__label appearance-label"><Languages class="inline-icon" /> {{ t('common.language') }}</h3>
+          <LanguageSwitcher variant="pills" />
+          <p class="subtle lang-hint">{{ t('settings.languageHint') }}</p>
         </UiCard>
 
         <!-- Admin -->
@@ -658,11 +746,11 @@ async function deleteAccount() {
           <div class="row grow" style="--gap: 12px">
             <span class="section__icon"><ShieldHalf /></span>
             <div class="grow" style="min-width: 0">
-              <strong>Admin panel</strong>
-              <p class="muted">Review profession requests and manage the profession list.</p>
+              <strong>{{ t('settings.adminTitle') }}</strong>
+              <p class="muted">{{ t('settings.adminText') }}</p>
             </div>
           </div>
-          <UiButton to="/admin" variant="soft" :icon-right="ChevronRight">Open</UiButton>
+          <UiButton to="/admin" variant="soft" :icon-right="ChevronRight">{{ t('common.open') }}</UiButton>
         </UiCard>
 
         <!-- Account -->
@@ -670,42 +758,38 @@ async function deleteAccount() {
           <div class="row grow" style="--gap: 12px">
             <span class="section__icon"><Mail /></span>
             <div class="grow" style="min-width: 0">
-              <strong>Signed in as</strong>
+              <strong>{{ t('settings.signedInAs') }}</strong>
               <p class="muted truncate">{{ me.email }}</p>
             </div>
-            <UiBadge tone="success" dot class="desktop-badge">Active</UiBadge>
+            <UiBadge tone="success" dot class="desktop-badge">{{ t('settings.active') }}</UiBadge>
           </div>
-          <UiButton variant="danger" :icon="LogOut" @click="logout">Sign out</UiButton>
+          <UiButton variant="danger" :icon="LogOut" @click="logout">{{ t('common.signOut') }}</UiButton>
         </UiCard>
 
         <!-- Danger zone -->
         <UiCard class="section danger">
           <div class="grow">
-            <h2 class="section-title danger__title"><TriangleAlert /> Delete account</h2>
-            <p class="muted">
-              Permanently removes your profile, connections, messages and photo. This cannot be undone.
-            </p>
+            <h2 class="section-title danger__title"><TriangleAlert /> {{ t('settings.deleteTitle') }}</h2>
+            <p class="muted">{{ t('settings.deleteText') }}</p>
           </div>
-          <UiButton variant="danger" :icon="Trash2" @click="openDelete">Delete account</UiButton>
+          <UiButton variant="danger" :icon="Trash2" @click="openDelete">{{ t('settings.deleteTitle') }}</UiButton>
         </UiCard>
       </div>
     </div>
 
-    <UiSheet v-model:open="deleteOpen" title="Delete your account?" width="440px">
+    <UiSheet v-model:open="deleteOpen" :title="t('settings.deleteSheet')" width="440px">
       <form id="delete-form" class="stack" style="--gap: 14px" novalidate @submit.prevent="deleteAccount">
-        <p class="muted">
-          Everything tied to <strong>{{ me.email }}</strong> will be erased immediately. Enter your password to confirm.
-        </p>
+        <p class="muted">{{ t('settings.deleteConfirm', { email: me.email }) }}</p>
         <UiInput
           v-model="deletePassword"
-          label="Password"
+          :label="t('auth.password')"
           type="password"
           autocomplete="current-password"
           :error="deleteError"
         />
       </form>
       <template #footer>
-        <UiButton variant="secondary" class="grow" @click="deleteOpen = false">Cancel</UiButton>
+        <UiButton variant="secondary" class="grow" @click="deleteOpen = false">{{ t('common.cancel') }}</UiButton>
         <UiButton
           type="submit"
           form="delete-form"
@@ -715,7 +799,7 @@ async function deleteAccount() {
           :loading="deleting"
           :disabled="!deletePassword"
         >
-          Delete forever
+          {{ t('settings.deleteForever') }}
         </UiButton>
       </template>
     </UiSheet>
@@ -725,6 +809,55 @@ async function deleteAccount() {
 <style scoped>
 .settings__nav {
   display: none;
+}
+.verify-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+.verify-banner p {
+  font-size: 0.86rem;
+}
+.verify-banner__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--warning);
+}
+.verify-banner__icon svg {
+  width: 20px;
+  height: 20px;
+}
+.appearance-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 10px;
+}
+.theme-grid + .appearance-label {
+  margin-top: 20px;
+}
+.inline-icon {
+  width: 14px;
+  height: 14px;
+}
+.lang-hint {
+  margin-top: 10px;
+  font-size: 0.8rem;
+}
+.forgot-link {
+  font-size: 0.86rem;
+  color: var(--primary);
 }
 .settings__grid {
   display: grid;

@@ -11,8 +11,8 @@ const router = useRouter();
 useThemeStore();
 
 function onSessionExpired(event) {
-  if (!auth.token) return;
-  auth.logout();
+  if (!auth.user) return;
+  auth.dropSession();
   toast.error(event.detail?.message || 'Your session expired, please sign in again');
   router.push({ name: 'login' });
 }

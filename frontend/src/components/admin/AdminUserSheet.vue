@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, computed, watch } from 'vue';
-import { Ban, CircleCheck, Trash2, Crown, Save, ExternalLink, ShieldHalf, Mail, Phone, KeyRound } from 'lucide-vue-next';
+import { Ban, CircleCheck, Trash2, Crown, Save, ExternalLink, ShieldHalf, Mail, Phone, KeyRound, X, History } from 'lucide-vue-next';
+import AdminActivity from './AdminActivity.vue';
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { toast } from '@/composables/useToast';
 import { timeAgo } from '@/utils/format';
@@ -35,6 +36,7 @@ const planForm = reactive({ planId: '', expires: '' });
 const role = ref('member');
 const confirmDelete = ref(false);
 const deleteText = ref('');
+const history = ref(null);
 
 const toDateInput = (d) => (d ? new Date(d).toISOString().slice(0, 10) : '');
 
@@ -74,6 +76,7 @@ async function patch(body, key, message) {
     fill({ ...user.value, ...data.user });
     toast.success(message);
     emit('saved');
+    history.value?.reload();
     return true;
   } catch (err) {
     errors.value = fieldErrors(err);
@@ -111,6 +114,17 @@ function saveRole() {
   return patch({ role: role.value }, 'role', role.value === 'admin' ? `${user.value.name} is now an admin` : `${user.value.name} is now a member`);
 }
 
+const approvalNote = ref('');
+function decide(approval) {
+  const name = user.value.name;
+  busy.value = approval === 'approved' ? 'approve' : 'reject';
+  return patch(
+    { approval, approvalNote: approval === 'rejected' ? approvalNote.value.trim() : '' },
+    busy.value,
+    approval === 'approved' ? `${name} is approved and can now sign in` : `${name}'s sign-up was declined`,
+  ).then((ok) => ok && (approvalNote.value = ''));
+}
+
 function toggleSuspend() {
   const suspend = !user.value.suspendedAt;
   return patch(
@@ -145,6 +159,12 @@ const statRows = computed(() =>
         { label: 'Active listings', value: `${stats.value.activeListings} of ${stats.value.totalListings}` },
         { label: 'Messages sent', value: stats.value.messagesSent },
         { label: 'Pending invites', value: stats.value.pendingRequests },
+        {
+          label: 'Rating',
+          value: stats.value.rating?.count ? `${stats.value.rating.average.toFixed(1)}★ (${stats.value.rating.count})` : 'No reviews',
+        },
+        { label: 'Open reports against', value: stats.value.openReports ?? 0 },
+        { label: 'Email', value: user.value.emailVerifiedAt ? 'Confirmed' : 'Not confirmed' },
         { label: 'Joined', value: formatDate(user.value.createdAt) },
         { label: 'Last seen', value: user.value.isOnline ? 'Online now' : user.value.lastSeenAt ? timeAgo(user.value.lastSeenAt) : 'Never' },
       ]
@@ -167,10 +187,40 @@ const statRows = computed(() =>
             <UiBadge v-if="user.role === 'admin'" tone="primary" :icon="ShieldHalf">Admin</UiBadge>
             <UiBadge v-if="user.isMainAdmin" tone="warning" :icon="KeyRound">Main admin (.env)</UiBadge>
             <UiBadge v-if="user.plan" tone="success" :icon="Crown">{{ user.plan.name }}</UiBadge>
+            <UiBadge :tone="user.emailVerifiedAt ? 'success' : 'warning'" :icon="Mail">
+              {{ user.emailVerifiedAt ? 'Email confirmed' : 'Email not confirmed' }}
+            </UiBadge>
           </div>
         </div>
         <UiButton variant="secondary" size="sm" :icon="ExternalLink" :to="`/u/${user.id}`">Profile</UiButton>
       </header>
+
+      <section v-if="user.approvalStatus !== 'approved'" class="approval" :class="`is-${user.approvalStatus}`">
+        <div class="grow">
+          <strong>{{ user.approvalStatus === 'pending' ? 'Waiting for approval' : 'Sign-up declined' }}</strong>
+          <p class="muted">
+            {{
+              user.approvalStatus === 'pending'
+                ? `Signed up ${timeAgo(user.createdAt)}. They can't sign in until you approve the account.`
+                : user.approvalNote
+                  ? `Reason given: “${user.approvalNote}”`
+                  : 'They cannot sign in. You can still approve the account.'
+            }}
+          </p>
+          <UiInput
+            v-if="user.approvalStatus === 'pending'"
+            v-model="approvalNote"
+            label="Reason if you decline (optional, shown to them)"
+            maxlength="300"
+          />
+        </div>
+        <div class="approval__actions">
+          <UiButton :icon="CircleCheck" :loading="busy === 'approve'" @click="decide('approved')">Approve</UiButton>
+          <UiButton v-if="user.approvalStatus === 'pending'" variant="secondary" :icon="X" :loading="busy === 'reject'" @click="decide('rejected')">
+            Decline
+          </UiButton>
+        </div>
+      </section>
 
       <dl class="stats">
         <div v-for="s in statRows" :key="s.label">
@@ -254,6 +304,13 @@ const statRows = computed(() =>
         </div>
       </section>
 
+      <!-- History -->
+      <section class="block">
+        <h3 class="block__title"><History /> Admin history</h3>
+        <p class="muted note">Who approved, suspended, edited or changed the plan of this account, and when.</p>
+        <AdminActivity ref="history" :target-id="user.id" compact />
+      </section>
+
       <!-- Danger -->
       <section v-if="!user.isMainAdmin" class="block danger">
         <h3 class="block__title"><Trash2 /> Delete account</h3>
@@ -309,6 +366,28 @@ const statRows = computed(() =>
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+.approval {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+.approval.is-rejected {
+  border-color: var(--border);
+  background: var(--surface-2);
+}
+.approval p {
+  margin: 2px 0 10px;
+  font-size: 0.86rem;
+}
+.approval__actions {
+  display: flex;
+  gap: 8px;
 }
 .stats {
   display: grid;
