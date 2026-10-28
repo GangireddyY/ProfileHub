@@ -34,6 +34,7 @@ router.get('/', searchLimiter, async (req, res) => {
   const peopleWhere = {
     id: { [Op.notIn]: [me.id, ...hidden] },
     discoverable: true,
+    role: 'member',
     ...ACTIVE_MEMBER,
     [Op.and]: [await userSearchClause(q)],
   };
@@ -53,7 +54,7 @@ router.get('/', searchLimiter, async (req, res) => {
     professionMatches.length
       ? User.findAll({
           attributes: ['profession', [fn('COUNT', col('id')), 'count']],
-          where: { discoverable: true, ...ACTIVE_MEMBER, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
+          where: { discoverable: true, role: 'member', ...ACTIVE_MEMBER, profession: { [Op.in]: professionMatches.map((p) => p.key) } },
           group: ['profession'],
           raw: true,
         })

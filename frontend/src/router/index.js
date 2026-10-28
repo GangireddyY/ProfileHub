@@ -12,26 +12,26 @@ const routes = [
     component: AppLayout,
     meta: { requiresAuth: true },
     children: [
-      { path: '', name: 'discover', component: () => import('@/views/DiscoverView.vue'), meta: { title: 'Discover' } },
+      { path: '', name: 'discover', component: () => import('@/views/DiscoverView.vue'), meta: { title: 'Discover', memberOnly: true } },
       { path: 'u/:id', name: 'profile', component: () => import('@/views/ProfileView.vue'), props: true },
       {
         path: 'search',
         name: 'search',
         component: () => import('@/views/SearchView.vue'),
         // The page rewrites ?q= as you type; don't remount it on every keystroke.
-        meta: { title: 'Search', stableKey: true },
+        meta: { title: 'Search', stableKey: true, memberOnly: true },
       },
       {
         path: 'market',
         name: 'market',
         component: () => import('@/views/MarketView.vue'),
-        meta: { title: 'Marketplace' },
+        meta: { title: 'Marketplace', memberOnly: true },
       },
       {
         path: 'market/new',
         name: 'listing-new',
         component: () => import('@/views/ListingEditorView.vue'),
-        meta: { title: 'Sell something' },
+        meta: { title: 'Sell something', memberOnly: true },
       },
       {
         path: 'market/:id',
@@ -45,20 +45,20 @@ const routes = [
         name: 'listing-edit',
         component: () => import('@/views/ListingEditorView.vue'),
         props: true,
-        meta: { title: 'Edit listing' },
+        meta: { title: 'Edit listing', memberOnly: true },
       },
       {
         path: 'network',
         name: 'network',
         component: () => import('@/views/NetworkView.vue'),
-        meta: { title: 'My network' },
+        meta: { title: 'My network', memberOnly: true },
       },
       {
         path: 'messages/:userId?',
         name: 'messages',
         component: () => import('@/views/MessagesView.vue'),
         props: true,
-        meta: { title: 'Messages', fullHeight: true },
+        meta: { title: 'Messages', fullHeight: true, memberOnly: true },
       },
       {
         path: 'notifications',
@@ -76,13 +76,14 @@ const routes = [
         path: 'plans',
         name: 'plans',
         component: () => import('@/views/PlansView.vue'),
-        meta: { title: 'Plans' },
+        meta: { title: 'Plans', memberOnly: true },
       },
       {
         path: 'admin',
         name: 'admin',
         component: () => import('@/views/AdminView.vue'),
-        meta: { title: 'Admin', requiresAdmin: true },
+        // Switching sections only changes ?tab=; keep the console mounted so its sidebar doesn't reload.
+        meta: { title: 'Admin', requiresAdmin: true, stableKey: true },
       },
     ],
   },
@@ -90,7 +91,7 @@ const routes = [
     path: '/welcome',
     name: 'welcome',
     component: () => import('@/views/OnboardingView.vue'),
-    meta: { requiresAuth: true, title: 'Set up your profile' },
+    meta: { requiresAuth: true, title: 'Set up your profile', memberOnly: true },
   },
   {
     path: '/',
@@ -147,6 +148,7 @@ const router = createRouter({
       return new Promise((resolve) => setTimeout(() => resolve({ el: to.hash, top: 80, behavior: 'smooth' }), 300));
     }
     if (to.name === from.name && ['messages', 'search', 'market'].includes(to.name)) return false;
+    if (to.name === 'admin' && from.name === 'admin') return { top: 0, behavior: 'smooth' };
     return { top: 0 };
   },
 });
@@ -164,7 +166,9 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : undefined };
   }
   // `?switch` lets a signed-in tab sign in as another account (sessions are per tab).
-  if (to.meta.guestOnly && auth.isAuthed && !to.query.switch) return { name: 'discover' };
+  if (to.meta.guestOnly && auth.isAuthed && !to.query.switch) return { name: auth.user?.role === 'admin' ? 'admin' : 'discover' };
+  // Admins run the app: member pages (Discover, Market, Network, Messages, Plans) send them to the admin panel.
+  if (to.meta.memberOnly && auth.user?.role === 'admin') return { name: 'admin' };
   if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {
     return { name: 'login', query: { redirect: to.fullPath, switch: 'admin' } };
   }

@@ -101,6 +101,7 @@ router.post('/:userId', connectionRequestLimiter, async (req, res) => {
 
   const target = await User.findByPk(targetId);
   if (!target || !target.isActiveMember) throw notFound('This member does not exist');
+  if (me.isAdmin || target.isAdmin) throw badRequest('Admin accounts manage ProfileHUB and are not part of member networks');
   if (await isBlockedBetween(me.id, targetId)) throw badRequest("You can't connect with this member");
 
   const row = await findPair(me.id, targetId);

@@ -28,6 +28,7 @@ import {
   Flag,
   Ban,
   Star,
+  ShieldHalf,
 } from 'lucide-vue-next';
 import ReportDialog from '@/components/ReportDialog.vue';
 import { api, errorMessage } from '@/api/http';
@@ -206,6 +207,12 @@ async function share() {
             <div class="header__actions">
               <template v-if="user.isMe">
                 <UiButton to="/settings" variant="secondary" :icon="Pencil">Edit profile</UiButton>
+                <UiButton variant="secondary" :icon="Share2" icon-only aria-label="Share profile" @click="share" />
+              </template>
+              <template v-else-if="auth.user?.role === 'admin'">
+                <UiButton :to="{ path: '/admin', query: { tab: 'users' } }" variant="secondary" :icon="ShieldHalf">
+                  Manage in admin panel
+                </UiButton>
                 <UiButton variant="secondary" :icon="Share2" icon-only aria-label="Share profile" @click="share" />
               </template>
               <template v-else>

@@ -255,6 +255,7 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', createLimiter, upload.array('images', MAX_LISTING_IMAGES), async (req, res) => {
+  if (req.user.isAdmin) throw badRequest('Admin accounts moderate the marketplace and cannot sell. Use a member account to list items.');
   const data = validate(listingSchema, req.body);
   const limits = await limitsFor(req.user);
   await assertCanActivate(req.user, limits);

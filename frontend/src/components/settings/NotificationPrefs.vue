@@ -15,13 +15,17 @@ const auth = useAuthStore();
 const me = computed(() => auth.user);
 
 const CATEGORIES = computed(() =>
-  [
-    { key: 'messages', icon: MessageCircle },
-    { key: 'network', icon: Users },
-    { key: 'plans', icon: Crown },
-    { key: 'account', icon: UserCheck },
-    me.value?.role === 'admin' ? { key: 'admin', icon: ShieldHalf } : null,
-  ].filter(Boolean),
+  me.value?.role === 'admin'
+    ? [
+        { key: 'admin', icon: ShieldHalf },
+        { key: 'account', icon: UserCheck },
+      ]
+    : [
+        { key: 'messages', icon: MessageCircle },
+        { key: 'network', icon: Users },
+        { key: 'plans', icon: Crown },
+        { key: 'account', icon: UserCheck },
+      ],
 );
 
 const saving = reactive({});

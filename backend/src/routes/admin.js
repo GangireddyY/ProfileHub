@@ -82,12 +82,14 @@ async function findRequest(id) {
 
 router.get('/stats', async (req, res) => {
   const fallback = await defaultPlan();
+  // Admins run the app and aren't counted as members.
+  const member = { role: 'member' };
   const [users, admins, suspended, subscribers, plans, pendingPlanRequests, activeListings, pendingRequests, professions] = await Promise.all([
-    User.count(),
+    User.count({ where: member }),
     User.count({ where: { role: 'admin' } }),
-    User.count({ where: { suspendedAt: { [Op.ne]: null } } }),
+    User.count({ where: { ...member, suspendedAt: { [Op.ne]: null } } }),
     // Members on a plan other than the default one.
-    User.count({ where: { planId: fallback ? { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: fallback.id }] } : { [Op.ne]: null } } }),
+    User.count({ where: { ...member, planId: fallback ? { [Op.and]: [{ [Op.ne]: null }, { [Op.ne]: fallback.id }] } : { [Op.ne]: null } } }),
     Plan.count({ where: { active: true } }),
     PlanRequest.count({ where: { status: 'pending' } }),
     Listing.count({ where: { status: 'active' } }),
@@ -110,7 +112,7 @@ router.get('/stats', async (req, res) => {
     activeListings,
     pendingRequests,
     professions: professions.filter((p) => p.active).length,
-    availableWorkers: await User.count({ where: { availableForWork: true } }),
+    availableWorkers: await User.count({ where: { ...member, availableForWork: true } }),
   });
 });
 
@@ -220,7 +222,7 @@ router.patch('/professions/:key', async (req, res) => {
 // ---------- Users ----------
 const userListSchema = z.object({
   q: z.string().trim().max(100).optional().default(''),
-  role: z.enum(['all', ...ROLES]).optional().default('all'),
+  role: z.enum(['all', ...ROLES]).optional().default('member'),
   status: z.enum(['all', 'active', 'suspended', 'pending', 'rejected']).optional().default('all'),
   plan: z.union([z.enum(['all', 'none']), z.uuid()]).optional().default('all'),
   sort: z.enum(['newest', 'oldest', 'name', 'lastSeen']).optional().default('newest'),

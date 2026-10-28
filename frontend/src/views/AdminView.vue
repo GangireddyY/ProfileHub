@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   ShieldHalf,
   Users,
@@ -21,26 +21,30 @@ import {
   UserCheck,
   Flag,
   History,
+  LayoutDashboard,
+  ChevronRight,
+  PartyPopper,
+  Settings,
 } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
+import { useAuthStore } from '@/stores/auth';
+import { useI18n } from 'vue-i18n';
 import { useProfessionsStore } from '@/stores/professions';
 import { toast } from '@/composables/useToast';
 import { iconFor } from '@/constants/professions';
 import { timeAgo } from '@/utils/format';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiButton from '@/components/ui/UiButton.vue';
-import UiTabs from '@/components/ui/UiTabs.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiBadge from '@/components/ui/UiBadge.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import UiToggle from '@/components/ui/UiToggle.vue';
 import UiTextarea from '@/components/ui/UiTextarea.vue';
-import UiSelect from '@/components/ui/UiSelect.vue';
+import UiSearchSelect from '@/components/ui/UiSearchSelect.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ProfessionForm from '@/components/admin/ProfessionForm.vue';
-import BackButton from '@/components/BackButton.vue';
 import AdminUsers from '@/components/admin/AdminUsers.vue';
 import AdminPlans from '@/components/admin/AdminPlans.vue';
 import AdminPlanRequests from '@/components/admin/AdminPlanRequests.vue';
@@ -49,15 +53,23 @@ import AdminReports from '@/components/admin/AdminReports.vue';
 import AdminActivity from '@/components/admin/AdminActivity.vue';
 
 const store = useProfessionsStore();
+const auth = useAuthStore();
+const { t } = useI18n();
 
 const route = useRoute();
-const TAB_KEYS = ['approvals', 'users', 'reports', 'listings', 'plans', 'plan-requests', 'requests', 'catalog', 'activity'];
-// Notifications link straight to a tab, e.g. /admin?tab=plan-requests.
-const tab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : 'users');
+const router = useRouter();
+const TAB_KEYS = ['overview', 'approvals', 'users', 'reports', 'listings', 'plans', 'plan-requests', 'requests', 'catalog', 'activity'];
+const DEFAULT_TAB = 'overview';
+// Notifications link straight to a section, e.g. /admin?tab=plan-requests.
+const tab = ref(TAB_KEYS.includes(route.query.tab) ? route.query.tab : DEFAULT_TAB);
 watch(
   () => route.query.tab,
-  (t) => TAB_KEYS.includes(t) && (tab.value = t),
+  (t) => (tab.value = TAB_KEYS.includes(t) ? t : DEFAULT_TAB),
 );
+// Keep the tab in the URL so the header navigation highlights the right section and links can be shared.
+watch(tab, (t) => {
+  if (route.query.tab !== t) router.replace({ query: { ...route.query, tab: t } });
+});
 const stats = ref(null);
 
 const plans = ref([]);
@@ -84,33 +96,83 @@ async function loadStats() {
   }
 }
 
-const statCards = computed(() => [
-  { label: 'Members', value: stats.value?.users, icon: Users },
-  { label: 'Waiting approval', value: stats.value?.pendingApprovals, icon: UserCheck, hot: stats.value?.pendingApprovals > 0 },
-  { label: 'Open reports', value: stats.value?.openReports, icon: Flag, hot: stats.value?.openReports > 0 },
-  { label: 'On a paid plan', value: stats.value?.subscribers, icon: Crown },
+/** Sidebar sections. `alert` counts are things waiting for an admin; `count` is just a total. */
+const SECTION_ICONS = {
+  overview: LayoutDashboard,
+  approvals: UserCheck,
+  users: Users,
+  reports: Flag,
+  listings: Store,
+  plans: Crown,
+  'plan-requests': Send,
+  requests: Inbox,
+  catalog: BriefcaseBusiness,
+  activity: History,
+};
+const i18nKey = (key) => (key === 'plan-requests' ? 'planRequests' : key);
+const SECTIONS = computed(() =>
+  Object.fromEntries(
+    Object.entries(SECTION_ICONS).map(([key, icon]) => [
+      key,
+      { icon, label: t(`admin.sections.${i18nKey(key)}`), text: t(`admin.sections.${i18nKey(key)}Text`) },
+    ]),
+  ),
+);
+const navGroups = computed(() => [
+  { title: '', items: [{ key: 'overview' }] },
   {
-    label: 'Plan requests',
-    value: stats.value?.pendingPlanRequests,
-    icon: Send,
-    hot: stats.value?.pendingPlanRequests > 0,
+    title: t('admin.groups.members'),
+    items: [
+      { key: 'approvals', alert: stats.value?.pendingApprovals },
+      { key: 'users', count: stats.value?.users },
+      { key: 'reports', alert: stats.value?.openReports },
+    ],
   },
-  { label: 'Suspended', value: stats.value?.suspended, icon: Ban, hot: stats.value?.suspended > 0 },
-  { label: 'Profession requests', value: stats.value?.pendingRequests, icon: Hourglass, hot: stats.value?.pendingRequests > 0 },
-  { label: 'Professions', value: stats.value?.professions, icon: BriefcaseBusiness },
-  { label: 'Active listings', value: stats.value?.activeListings, icon: Store },
-  { label: 'Open to work', value: stats.value?.availableWorkers, icon: HardHat },
+  { title: t('admin.groups.marketplace'), items: [{ key: 'listings', count: stats.value?.activeListings }] },
+  {
+    title: t('admin.groups.plans'),
+    items: [
+      { key: 'plans', count: plans.value.length },
+      { key: 'plan-requests', alert: stats.value?.pendingPlanRequests },
+    ],
+  },
+  {
+    title: t('admin.groups.professions'),
+    items: [
+      { key: 'requests', alert: stats.value?.pendingRequests },
+      { key: 'catalog', count: stats.value?.professions },
+    ],
+  },
+  { title: t('admin.groups.system'), items: [{ key: 'activity' }] },
 ]);
-const tabs = computed(() => [
-  { key: 'approvals', label: 'Approvals', icon: UserCheck, count: stats.value?.pendingApprovals || undefined },
-  { key: 'users', label: 'Users', icon: Users, count: stats.value?.users || undefined },
-  { key: 'reports', label: 'Reports', icon: Flag, count: stats.value?.openReports || undefined },
-  { key: 'listings', label: 'Listings', icon: Store },
-  { key: 'plans', label: 'Plans', icon: Crown, count: plans.value.length || undefined },
-  { key: 'plan-requests', label: 'Plan requests', icon: Send, count: stats.value?.pendingPlanRequests || undefined },
-  { key: 'requests', label: 'Profession requests', icon: Inbox, count: stats.value?.pendingRequests || undefined },
-  { key: 'catalog', label: 'Profession list', icon: BriefcaseBusiness },
-  { key: 'activity', label: 'Activity log', icon: History },
+const section = computed(() => SECTIONS.value[tab.value]);
+// New sign-ups, reports and requests arrive as notifications; keep the sidebar counts current.
+watch(
+  () => auth.user?.unreadNotifications,
+  (n, prev) => n > (prev || 0) && loadStats(),
+);
+
+// ---------- Overview ----------
+const o = (key) => t(`admin.overview.${key}`);
+const kpis = computed(() => [
+  { label: o('members'), value: stats.value?.users, icon: Users, hue: 243, to: 'users' },
+  { label: o('activeListings'), value: stats.value?.activeListings, icon: Store, hue: 190, to: 'listings' },
+  { label: o('paidPlan'), value: stats.value?.subscribers, icon: Crown, hue: 38, to: 'plans' },
+  { label: o('openToWork'), value: stats.value?.availableWorkers, icon: HardHat, hue: 152, to: 'users' },
+]);
+const attention = computed(() =>
+  [
+    { key: 'approvals', label: o('approvals'), value: stats.value?.pendingApprovals, icon: UserCheck },
+    { key: 'reports', label: o('reports'), value: stats.value?.openReports, icon: Flag },
+    { key: 'plan-requests', label: o('planRequests'), value: stats.value?.pendingPlanRequests, icon: Send },
+    { key: 'requests', label: o('professionRequests'), value: stats.value?.pendingRequests, icon: Hourglass },
+  ].filter((a) => a.value > 0),
+);
+const smallStats = computed(() => [
+  { label: o('suspended'), value: stats.value?.suspended, icon: Ban, to: 'users' },
+  { label: o('admins'), value: stats.value?.admins, icon: ShieldHalf, to: 'users' },
+  { label: o('activePlans'), value: stats.value?.plans, icon: Crown, to: 'plans' },
+  { label: o('professions'), value: stats.value?.professions, icon: BriefcaseBusiness, to: 'catalog' },
 ]);
 
 // ---------- Requests ----------
@@ -208,16 +270,29 @@ const catalog = ref([]);
 const catalogLoaded = ref(false);
 const loadingCatalog = ref(false);
 const catalogQuery = ref('');
-const catalogCategory = ref('');
+const catalogFilter = ref({ categories: [] });
+/** The single picked category (if exactly one), used as the default when adding a profession. */
+const catalogCategory = computed(() => (catalogFilter.value.categories.length === 1 ? catalogFilter.value.categories[0] : ''));
 const showInactive = ref(false);
-const categoryOptions = computed(() => [{ value: '', label: 'All categories' }, ...store.categories.map((c) => ({ value: c.key, label: c.label }))]);
+const categoryGroups = computed(() => {
+  const perCategory = new Map();
+  for (const p of catalog.value) perCategory.set(p.category, (perCategory.get(p.category) || 0) + 1);
+  return [
+    {
+      key: 'categories',
+      title: t('common.categories'),
+      options: store.categories.map((c) => ({ ...c, meta: perCategory.get(c.key) || 0 })),
+    },
+  ];
+});
 
 const filteredCatalog = computed(() => {
   const q = catalogQuery.value.trim().toLowerCase();
+  const picked = new Set(catalogFilter.value.categories);
   return catalog.value.filter(
     (p) =>
       (showInactive.value || p.active) &&
-      (!catalogCategory.value || p.category === catalogCategory.value) &&
+      (!picked.size || picked.has(p.category)) &&
       (!q || p.label.toLowerCase().includes(q) || p.key.includes(q)),
   );
 });
@@ -297,32 +372,110 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="container admin">
-    <BackButton />
-    <header class="page-head">
-      <div class="row" style="--gap: 14px">
-        <span class="head-icon"><ShieldHalf /></span>
-        <div>
-          <h1 class="page-title">Admin panel</h1>
-          <p class="muted">Manage every account and plan, review profession requests and keep the profession list tidy.</p>
+  <div class="container console">
+    <!-- Sidebar -->
+    <aside class="side" :aria-label="t('admin.console')">
+      <div class="side__head">
+        <span class="side__logo"><ShieldHalf /></span>
+        <div class="grow" style="min-width: 0">
+          <strong>{{ t('admin.console') }}</strong>
+          <span class="truncate">{{ auth.user?.name }}</span>
         </div>
       </div>
-    </header>
 
-    <div class="stats">
-      <div v-for="s in statCards" :key="s.label" class="stat" :class="{ 'is-hot': s.hot }">
-        <span class="stat__icon"><component :is="s.icon" /></span>
-        <div>
-          <strong v-if="stats">{{ s.value ?? 0 }}</strong>
-          <UiSkeleton v-else width="36px" height="22px" />
-          <span>{{ s.label }}</span>
+      <nav class="side__nav">
+        <div v-for="g in navGroups" :key="g.title || 'main'" class="side__group">
+          <p v-if="g.title" class="side__title">{{ g.title }}</p>
+          <button
+            v-for="item in g.items"
+            :key="item.key"
+            type="button"
+            class="side__link"
+            :class="{ 'is-active': tab === item.key }"
+            :aria-current="tab === item.key ? 'page' : undefined"
+            @click="tab = item.key"
+          >
+            <component :is="SECTIONS[item.key].icon" class="side__icon" />
+            <span class="side__label">{{ SECTIONS[item.key].label }}</span>
+            <span v-if="item.alert" class="side__alert">{{ item.alert > 99 ? '99+' : item.alert }}</span>
+            <span v-else-if="item.count" class="side__count">{{ item.count }}</span>
+          </button>
         </div>
+      </nav>
+
+      <RouterLink to="/settings" class="side__foot">
+        <Settings /> {{ t('admin.accountSettings') }}
+      </RouterLink>
+    </aside>
+
+    <!-- Content -->
+    <section class="main">
+      <header class="main__head">
+        <span class="main__icon"><component :is="section.icon" /></span>
+        <div class="grow" style="min-width: 0">
+          <p class="main__crumb">{{ t('admin.console') }} <ChevronRight /> {{ section.label }}</p>
+          <h1 class="main__title">{{ section.label }}</h1>
+          <p class="muted">{{ section.text }}</p>
+        </div>
+      </header>
+
+    <Transition name="section" mode="out-in">
+    <div :key="tab" class="main__body">
+    <!-- Overview -->
+    <template v-if="tab === 'overview'">
+      <div class="kpis">
+        <button v-for="k in kpis" :key="k.label" type="button" class="kpi" :style="{ '--hue': k.hue }" @click="tab = k.to">
+          <span class="kpi__icon"><component :is="k.icon" /></span>
+          <span class="kpi__body">
+            <strong v-if="stats">{{ k.value ?? 0 }}</strong>
+            <UiSkeleton v-else width="48px" height="28px" />
+            <span>{{ k.label }}</span>
+          </span>
+        </button>
       </div>
-    </div>
 
-    <UiTabs v-model="tab" :tabs="tabs" />
+      <div class="overview">
+        <UiCard class="attention">
+          <h2 class="card-title">{{ o('attention') }}</h2>
+          <ul v-if="attention.length" class="attention__list">
+            <li v-for="a in attention" :key="a.key">
+              <button type="button" class="attention__item" @click="tab = a.key">
+                <span class="attention__icon"><component :is="a.icon" /></span>
+                <span class="grow">{{ a.label }}</span>
+                <strong>{{ a.value }}</strong>
+                <ChevronRight class="attention__go" />
+              </button>
+            </li>
+          </ul>
+          <div v-else-if="stats" class="attention__clear">
+            <PartyPopper />
+            <div>
+              <strong>{{ o('caughtUp') }}</strong>
+              <p class="muted">{{ o('caughtUpText') }}</p>
+            </div>
+          </div>
+          <UiSkeleton v-else height="120px" />
 
-    <AdminUsers v-if="tab === 'approvals'" key="approvals" :plans="plans" initial-status="pending" @changed="onAccountsChanged" />
+          <div class="mini-stats">
+            <button v-for="s in smallStats" :key="s.label" type="button" class="mini-stat" @click="tab = s.to">
+              <component :is="s.icon" />
+              <span>{{ s.label }}</span>
+              <strong>{{ stats ? s.value ?? 0 : '–' }}</strong>
+            </button>
+          </div>
+        </UiCard>
+
+        <UiCard class="recent">
+          <div class="row-between">
+            <h2 class="card-title">{{ o('recent') }}</h2>
+            <UiButton size="sm" variant="ghost" :icon-right="ChevronRight" @click="tab = 'activity'">{{ o('fullLog') }}</UiButton>
+          </div>
+          <AdminActivity compact />
+        </UiCard>
+      </div>
+    </template>
+
+    <AdminUsers v-else-if="tab === 'approvals'" key="approvals" :plans="plans" initial-status="pending" @changed="onAccountsChanged" />
     <AdminUsers v-else-if="tab === 'users'" key="users" :plans="plans" @changed="onAccountsChanged" />
     <AdminReports v-else-if="tab === 'reports'" :plans="plans" @changed="onAccountsChanged" />
     <AdminListings v-else-if="tab === 'listings'" @changed="onAccountsChanged" />
@@ -401,57 +554,74 @@ onMounted(() => {
     </template>
 
     <!-- Catalog -->
-    <template v-else>
+    <template v-else-if="tab === 'catalog'">
       <div class="toolbar">
         <label class="search">
           <Search />
           <input v-model="catalogQuery" type="search" placeholder="Search professions" aria-label="Search professions" />
         </label>
-        <UiSelect v-model="catalogCategory" :options="categoryOptions" aria-label="Category" class="toolbar__select" />
+        <UiSearchSelect
+          v-model="catalogFilter"
+          :groups="categoryGroups"
+          :all-label="t('common.allCategories')"
+          :placeholder="t('market.catPlaceholder')"
+          class="toolbar__select"
+        />
         <UiButton :icon="Plus" @click="openEdit(null)">Add profession</UiButton>
       </div>
-      <UiToggle v-model="showInactive" label="Show hidden professions" class="inactive-toggle" />
 
-      <div v-if="loadingCatalog" class="stack" style="--gap: 8px">
-        <UiSkeleton v-for="i in 6" :key="i" height="58px" radius="14px" />
+      <div class="catalog-bar">
+        <p class="muted">
+          <strong>{{ filteredCatalog.length }}</strong> of {{ catalog.length }} professions
+        </p>
+        <UiToggle v-model="showInactive" label="Show hidden professions" class="inactive-toggle" />
       </div>
 
-      <UiCard v-else :padded="false">
-        <p class="catalog-count muted">{{ filteredCatalog.length }} of {{ catalog.length }} professions</p>
-        <ul class="catalog">
-          <li v-for="p in filteredCatalog" :key="p.key" class="prow" :class="{ 'is-off': !p.active }" :style="{ '--hue': p.hue }">
-            <span class="prow__icon"><component :is="iconFor(p.icon)" /></span>
-            <div class="grow" style="min-width: 0">
-              <strong class="truncate" style="display: block">{{ p.label }}</strong>
-              <span class="subtle small">{{ store.category(p.category).label }} · {{ p.userCount }} {{ p.userCount === 1 ? 'member' : 'members' }}</span>
-            </div>
-            <UiBadge v-if="!p.active" tone="neutral">Hidden</UiBadge>
-            <button
-              type="button"
-              class="switch"
-              :class="{ 'is-on': p.active }"
-              role="switch"
-              :aria-checked="p.active"
-              :aria-label="p.active ? `Hide ${p.label}` : `Show ${p.label}`"
-              :disabled="p.key === 'other'"
-              @click="toggleActive(p)"
-            >
-              <span />
-            </button>
-            <UiButton variant="ghost" size="sm" :icon="Pencil" icon-only :aria-label="`Edit ${p.label}`" @click="openEdit(p)" />
-          </li>
-        </ul>
-        <UiEmpty
-          v-if="!filteredCatalog.length"
-          compact
-          :icon="BriefcaseBusiness"
-          title="No professions match"
-          description="Add it to the list so members can pick it."
-        >
+      <div v-if="loadingCatalog" class="pgrid">
+        <UiSkeleton v-for="i in 9" :key="i" height="132px" radius="16px" />
+      </div>
+
+      <UiCard v-else-if="!filteredCatalog.length">
+        <UiEmpty :icon="BriefcaseBusiness" title="No professions match" description="Add it to the list so members can pick it.">
           <UiButton size="sm" :icon="Plus" @click="openEdit(null)">Add “{{ catalogQuery.trim() || 'profession' }}”</UiButton>
         </UiEmpty>
       </UiCard>
+
+      <TransitionGroup v-else name="list" tag="ul" class="pgrid">
+        <li v-for="p in filteredCatalog" :key="p.key" class="pcard" :class="{ 'is-off': !p.active }" :style="{ '--hue': p.hue }">
+          <div class="pcard__top">
+            <span class="pcard__icon"><component :is="iconFor(p.icon)" /></span>
+            <div class="pcard__actions">
+              <button
+                type="button"
+                class="switch"
+                :class="{ 'is-on': p.active }"
+                role="switch"
+                :aria-checked="p.active"
+                :aria-label="p.active ? `Hide ${p.label}` : `Show ${p.label}`"
+                :title="p.active ? 'Visible to members' : 'Hidden from members'"
+                :disabled="p.key === 'other'"
+                @click="toggleActive(p)"
+              >
+                <span />
+              </button>
+              <UiButton variant="ghost" size="sm" :icon="Pencil" icon-only :aria-label="`Edit ${p.label}`" @click="openEdit(p)" />
+            </div>
+          </div>
+          <strong class="pcard__name">{{ p.label }}</strong>
+          <span class="cat-pill" :style="{ '--hue': store.category(p.category).hue }">
+            <component :is="store.category(p.category).icon" /> {{ store.category(p.category).label }}
+          </span>
+          <div class="pcard__foot">
+            <span class="subtle small"><Users /> {{ p.userCount }} {{ p.userCount === 1 ? 'member' : 'members' }}</span>
+            <UiBadge v-if="!p.active" tone="neutral">Hidden</UiBadge>
+          </div>
+        </li>
+      </TransitionGroup>
     </template>
+    </div>
+    </Transition>
+    </section>
 
     <UiSheet v-model:open="approveOpen" title="Approve and add profession" width="520px">
       <div class="stack" style="--gap: 16px">
@@ -505,77 +675,459 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.admin {
+/* ---------- Console layout ---------- */
+.console {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.main {
   display: flex;
   flex-direction: column;
   gap: 18px;
+  min-width: 0;
 }
-.head-icon {
+
+/* Sidebar: a horizontal strip on small screens, a sticky column on desktop. */
+.side {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 20;
+  margin: -20px calc(-1 * var(--page-pad, 16px)) 0;
+  padding: 8px var(--page-pad, 16px);
+  background: color-mix(in srgb, var(--bg, var(--surface-2)) 92%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.side__head,
+.side__title,
+.side__foot {
+  display: none;
+}
+.side__nav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.side__nav::-webkit-scrollbar {
+  display: none;
+}
+.side__group {
+  display: contents;
+}
+.side__link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font-weight: 600;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.side__link:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.side__link.is-active {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.side__icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.side__alert,
+.side__count {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 99px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+.side__alert {
+  background: var(--danger);
+  color: #fff;
+}
+.side__count {
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+.side__link.is-active .side__count {
+  background: var(--surface);
+  color: var(--primary);
+}
+
+@media (min-width: 1024px) {
+  .console {
+    grid-template-columns: 264px minmax(0, 1fr);
+    gap: 24px;
+  }
+  .side {
+    top: calc(var(--nav-h) + 20px);
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - var(--nav-h) - 40px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    backdrop-filter: none;
+    overflow: hidden;
+  }
+  .side__head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .side__head strong {
+    display: block;
+    font-size: 0.98rem;
+  }
+  .side__head span {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--text-3);
+  }
+  .side__logo {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary), var(--accent));
+    color: #fff;
+    box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--primary) 70%, transparent);
+  }
+  .side__logo svg {
+    width: 20px;
+    height: 20px;
+  }
+  .side__nav {
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .side__group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .side__group + .side__group {
+    margin-top: 10px;
+  }
+  .side__title {
+    display: block;
+    padding: 6px 12px 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .side__link {
+    width: 100%;
+    height: 40px;
+  }
+  .side__link.is-active::before {
+    content: '';
+    position: absolute;
+    left: -10px;
+    top: 8px;
+    bottom: 8px;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--primary);
+  }
+  .side__label {
+    flex: 1;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .side__foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 0.86rem;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .side__foot:hover {
+    color: var(--primary);
+  }
+  .side__foot svg {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+.main__body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.section-enter-active,
+.section-leave-active {
+  transition: opacity 0.16s var(--ease), transform 0.16s var(--ease);
+}
+.section-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.section-leave-to {
+  opacity: 0;
+}
+
+/* ---------- Section header ---------- */
+.main__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.main__icon {
   display: grid;
   place-items: center;
   width: 48px;
   height: 48px;
+  flex-shrink: 0;
   border-radius: 15px;
   background: linear-gradient(135deg, var(--primary), var(--accent));
   color: #fff;
+  box-shadow: 0 12px 24px -12px color-mix(in srgb, var(--primary) 80%, transparent);
 }
-.head-icon svg {
-  width: 24px;
-  height: 24px;
+.main__icon svg {
+  width: 23px;
+  height: 23px;
 }
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 12px;
-}
-.stat {
+.main__crumb {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 0;
-  padding: 14px 16px;
+  gap: 4px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.main__crumb svg {
+  width: 13px;
+  height: 13px;
+}
+.main__title {
+  font-size: clamp(1.35rem, 2.4vw, 1.7rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+.main__head p.muted {
+  margin-top: 2px;
+  font-size: 0.9rem;
+}
+
+/* ---------- Overview ---------- */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.kpi {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: var(--shadow-xs);
-}
-.stat strong {
-  display: block;
-  font-size: 1.4rem;
-  font-weight: 800;
-  line-height: 1.1;
-}
-.stat > div {
-  min-width: 0;
-}
-.stat span:last-child {
-  display: block;
-  font-size: 0.8rem;
-  color: var(--text-3);
-  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  text-align: left;
   overflow: hidden;
-  text-overflow: ellipsis;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.stat__icon {
+.kpi::after {
+  content: '';
+  position: absolute;
+  right: -30px;
+  top: -30px;
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: radial-gradient(circle, hsl(var(--hue) 85% 60% / 0.16), transparent 70%);
+}
+.kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+  border-color: hsl(var(--hue) 60% 60% / 0.5);
+}
+.kpi__icon {
   display: grid;
   place-items: center;
-  width: 42px;
-  height: 42px;
+  width: 46px;
+  height: 46px;
   flex-shrink: 0;
-  border-radius: 13px;
-  background: var(--primary-soft);
-  color: var(--primary);
+  border-radius: 14px;
+  background: linear-gradient(135deg, hsl(var(--hue) 80% 60%), hsl(calc(var(--hue) + 30) 75% 50%));
+  color: #fff;
 }
-.stat__icon svg {
-  width: 20px;
-  height: 20px;
+.kpi__icon svg {
+  width: 22px;
+  height: 22px;
 }
-.stat.is-hot {
-  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+.kpi__body strong {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
-.stat.is-hot .stat__icon {
+.kpi__body span {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (min-width: 1180px) {
+  .overview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  }
+}
+.card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.attention__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.attention__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
   background: var(--warning-soft);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: transform 0.15s var(--ease);
+}
+.attention__item:hover {
+  transform: translateX(3px);
+}
+.attention__item strong {
+  font-size: 1.1rem;
+}
+.attention__icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--surface);
   color: var(--warning);
+}
+.attention__icon svg,
+.attention__go {
+  width: 17px;
+  height: 17px;
+}
+.attention__go {
+  color: var(--text-3);
+}
+.attention__clear {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--success-soft, var(--surface-2));
+}
+.attention__clear > svg {
+  width: 28px;
+  height: 28px;
+  color: var(--success);
+  flex-shrink: 0;
+}
+.attention__clear p {
+  font-size: 0.86rem;
+}
+.mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.mini-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.82rem;
+  color: var(--text-2);
+  text-align: left;
+}
+.mini-stat:hover {
+  border-color: var(--border-strong);
+}
+.mini-stat svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  color: var(--text-3);
+}
+.mini-stat span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini-stat strong {
+  color: var(--text);
+}
+.recent .row-between {
+  margin-bottom: 4px;
+}
+.recent .card-title {
+  margin-bottom: 0;
 }
 
 .segmented {
@@ -710,45 +1262,108 @@ a.request__name:hover {
 .inactive-toggle {
   max-width: 360px;
 }
-.catalog-count {
-  padding: 12px 16px 0;
-  font-size: 0.82rem;
-}
-.catalog {
-  list-style: none;
-  margin: 0;
-  padding: 6px;
-}
-.prow {
+.catalog-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 12px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 0.86rem;
 }
-.prow:hover {
-  background: var(--surface-2);
+.catalog-bar strong {
+  color: var(--text);
 }
-.prow.is-off {
+.pgrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+.pcard {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  overflow: hidden;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), border-color 0.2s var(--ease), opacity 0.2s;
+}
+.pcard::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, hsl(var(--hue) 75% 58%), hsl(calc(var(--hue) + 35) 70% 55%));
+}
+.pcard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: hsl(var(--hue) 60% 65% / 0.5);
+}
+.pcard.is-off {
   opacity: 0.6;
 }
-.prow__icon {
+.pcard.is-off::before {
+  background: var(--border-strong);
+}
+.pcard__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.pcard__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pcard__icon {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
-  border-radius: 11px;
+  border-radius: 13px;
   background: hsl(var(--hue) 85% 95%);
   color: hsl(var(--hue) 60% 40%);
 }
-[data-theme='dark'] .prow__icon {
+[data-theme='dark'] .pcard__icon {
   background: hsl(var(--hue) 60% 50% / 0.18);
   color: hsl(var(--hue) 85% 75%);
 }
-.prow__icon svg {
-  width: 18px;
-  height: 18px;
+.pcard__icon svg {
+  width: 21px;
+  height: 21px;
+}
+.pcard__name {
+  font-size: 0.98rem;
+  line-height: 1.3;
+}
+.pcard__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.pcard__foot .small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.pcard__foot svg {
+  width: 13px;
+  height: 13px;
 }
 .switch {
   position: relative;

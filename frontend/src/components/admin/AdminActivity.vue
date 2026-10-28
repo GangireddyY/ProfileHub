@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import {
   Search,
   History,
@@ -46,15 +47,11 @@ const loading = ref(true);
 const exporting = ref(false);
 const expanded = ref(new Set());
 
-const TYPE_OPTIONS = [
-  { value: 'all', label: 'Everything' },
-  { value: 'user', label: 'Accounts' },
-  { value: 'listing', label: 'Listings' },
-  { value: 'report', label: 'Reports' },
-  { value: 'plan', label: 'Plans' },
-  { value: 'profession', label: 'Profession list' },
-  { value: 'profession_request', label: 'Profession requests' },
-];
+const { t } = useI18n();
+const ta = (key) => t(`admin.activity.${key}`);
+const TYPE_OPTIONS = computed(() =>
+  ['all', 'user', 'listing', 'report', 'plan', 'profession', 'profession_request'].map((value) => ({ value, label: ta(`types.${value}`) })),
+);
 
 const ICONS = {
   'user.approved': UserCheck,
@@ -155,15 +152,17 @@ defineExpose({ reload: load });
     <div v-if="!compact" class="toolbar">
       <label class="search">
         <Search />
-        <input v-model.trim="filters.q" type="search" placeholder="Search actions, members or admins" aria-label="Search activity" />
+        <input v-model.trim="filters.q" type="search" :placeholder="ta('searchPh')" :aria-label="ta('searchPh')" />
       </label>
-      <UiSelect v-model="filters.targetType" :options="TYPE_OPTIONS" aria-label="What changed" />
+      <UiSelect v-model="filters.targetType" :options="TYPE_OPTIONS" :aria-label="ta('types.all')" />
       <UiSelect
         v-model="filters.adminId"
-        :options="[{ value: '', label: 'All admins' }, ...admins.map((a) => ({ value: a.id, label: a.name }))]"
-        aria-label="Admin"
+        :options="[{ value: '', label: ta('allAdmins') }, ...admins.map((a) => ({ value: a.id, label: a.name }))]"
+        :aria-label="ta('allAdmins')"
       />
-      <UiButton variant="secondary" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">Export CSV</UiButton>
+      <UiButton variant="secondary" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">
+        {{ t('admin.exportCsv') }}
+      </UiButton>
     </div>
 
     <div v-if="loading && !items.length" class="stack" style="--gap: 8px">
@@ -174,8 +173,8 @@ defineExpose({ reload: load });
       <UiEmpty
         :icon="History"
         compact
-        :title="targetId ? 'No admin changes yet' : 'No activity yet'"
-        :description="targetId ? 'Approvals, suspensions, plan changes and edits to this account will be listed here.' : 'Every change an admin makes is recorded here.'"
+        :title="targetId ? ta('emptyMemberTitle') : ta('emptyTitle')"
+        :description="targetId ? ta('emptyMemberText') : ta('emptyText')"
       />
     </component>
 
@@ -185,14 +184,14 @@ defineExpose({ reload: load });
           <span class="entry__icon" :class="`entry__icon--${tone(a.action)}`"><component :is="iconFor(a.action)" /></span>
           <div class="entry__body">
             <p class="entry__text">
-              <strong>{{ a.adminName || 'Deleted admin' }}</strong>
+              <strong>{{ a.adminName || ta('deletedAdmin') }}</strong>
               <span class="entry__summary">{{ a.summary || a.action }}</span>
             </p>
             <p class="entry__meta">
               <span v-if="!targetId && a.targetLabel" class="entry__target">{{ a.targetLabel }}</span>
               <time :datetime="a.createdAt" :title="new Date(a.createdAt).toLocaleString()">{{ timeAgo(a.createdAt) }}</time>
               <button v-if="a.data?.changes" type="button" class="entry__more" @click="toggleDetails(a.id)">
-                {{ expanded.has(a.id) ? 'Hide details' : 'Details' }}
+                {{ expanded.has(a.id) ? ta('hideDetails') : ta('details') }}
               </button>
             </p>
             <table v-if="expanded.has(a.id) && a.data?.changes" class="changes">
@@ -210,9 +209,13 @@ defineExpose({ reload: load });
     </component>
 
     <div v-if="pages > 1" class="pager">
-      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">Previous</UiButton>
-      <span class="muted">Page {{ page }} of {{ pages }}</span>
-      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">Next</UiButton>
+      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">
+        {{ t('admin.pager.previous') }}
+      </UiButton>
+      <span class="muted">{{ t('admin.pager.page', { page, pages }) }}</span>
+      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">
+        {{ t('admin.pager.next') }}
+      </UiButton>
     </div>
   </div>
 </template>

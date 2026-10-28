@@ -19,6 +19,7 @@ import {
   Crown,
   ShieldCheck,
   FileText,
+  LayoutDashboard,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
@@ -42,13 +43,17 @@ const isMobile = useIsMobile();
 const me = computed(() => auth.user);
 const unread = computed(() => (chat.conversationsLoaded ? chat.totalUnread : me.value?.unreadMessages || 0));
 
-const nav = computed(() => [
+const isAdmin = computed(() => me.value?.role === 'admin');
+
+// Admins navigate with the admin console's sidebar, so the top bar has no member links for them.
+const memberNav = computed(() => [
   { to: '/', label: t('nav.discover'), icon: Compass, match: (n) => n === 'discover' },
   { to: '/market', label: t('nav.market'), icon: Store, match: (n) => ['market', 'listing', 'listing-new', 'listing-edit'].includes(n) },
   { to: '/network', label: t('nav.network'), icon: Users, badge: me.value?.pendingRequests, match: (n) => n === 'network' },
   { to: '/messages', label: t('nav.messages'), icon: MessageCircle, badge: unread.value, match: (n) => n === 'messages' },
 ]);
-const isAdmin = computed(() => me.value?.role === 'admin');
+const nav = computed(() => (isAdmin.value ? [] : memberNav.value));
+const homeLink = computed(() => (isAdmin.value ? '/admin' : '/'));
 
 const topQuery = ref('');
 watch(
@@ -71,8 +76,8 @@ const tabs = computed(() => [
   },
 ]);
 
-/** In an open chat on phones, give the conversation the whole screen. */
-const showTabbar = computed(() => !(isMobile.value && route.name === 'messages' && route.params.userId));
+/** In an open chat on phones, give the conversation the whole screen. Admins use the console's own menu. */
+const showTabbar = computed(() => !isAdmin.value && !(isMobile.value && route.name === 'messages' && route.params.userId));
 
 function logout() {
   auth.logout();
@@ -84,12 +89,17 @@ function logout() {
   <div class="shell" :class="{ 'has-tabbar': showTabbar }">
     <header class="topbar">
       <div class="container topbar__inner">
-        <RouterLink to="/" class="brand" aria-label="ProfileHUB home">
+        <RouterLink :to="homeLink" class="brand" aria-label="ProfileHUB home">
           <img src="/favicon.svg" alt="" width="34" height="34" />
           <span>Profile<b>HUB</b></span>
+          <small v-if="isAdmin" class="brand__admin">{{ t('admin.badge') }}</small>
         </RouterLink>
 
-        <form class="topsearch" role="search" @submit.prevent="submitSearch">
+        <RouterLink v-if="isAdmin && route.name !== 'admin'" to="/admin" class="console-link">
+          <LayoutDashboard /> {{ t('admin.backToConsole') }}
+        </RouterLink>
+
+        <form v-if="!isAdmin" class="topsearch" role="search" @submit.prevent="submitSearch">
           <Search class="topsearch__icon" aria-hidden="true" />
           <input
             v-model="topQuery"
@@ -103,7 +113,7 @@ function logout() {
         <nav class="topnav" aria-label="Main">
           <RouterLink
             v-for="item in nav"
-            :key="item.to"
+            :key="item.label"
             :to="item.to"
             class="topnav__link"
             :class="{ 'is-active': item.match(route.name) }"
@@ -124,6 +134,7 @@ function logout() {
           </Transition>
 
           <RouterLink
+            v-if="!isAdmin"
             to="/search"
             class="icon-btn search-btn"
             :class="{ 'is-active': route.name === 'search' }"
@@ -171,11 +182,17 @@ function logout() {
                 <span class="muted truncate" style="display: block; font-size: 0.82rem">{{ me?.roleTitle || me?.email }}</span>
               </div>
             </div>
-            <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> {{ t('common.viewProfile') }}</RouterLink>
-            <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> {{ t('nav.myListings') }}</RouterLink>
-            <RouterLink to="/plans" class="menu-item"><Crown /> {{ t('nav.plans') }}</RouterLink>
+            <template v-if="isAdmin">
+              <RouterLink to="/admin" class="menu-item"><ShieldHalf /> {{ t('nav.adminPanel') }}</RouterLink>
+              <RouterLink :to="{ path: '/admin', query: { tab: 'plan-requests' } }" class="menu-item"><Crown /> {{ t('admin.planRequests') }}</RouterLink>
+              <RouterLink :to="{ path: '/admin', query: { tab: 'requests' } }" class="menu-item"><Tag /> {{ t('admin.professionRequests') }}</RouterLink>
+            </template>
+            <template v-else>
+              <RouterLink :to="`/u/${me?.id}`" class="menu-item"><UserRound /> {{ t('common.viewProfile') }}</RouterLink>
+              <RouterLink :to="{ path: '/market', query: { tab: 'mine' } }" class="menu-item"><Tag /> {{ t('nav.myListings') }}</RouterLink>
+              <RouterLink to="/plans" class="menu-item"><Crown /> {{ t('nav.plans') }}</RouterLink>
+            </template>
             <RouterLink to="/settings" class="menu-item"><Settings /> {{ t('nav.settingsPrivacy') }}</RouterLink>
-            <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> {{ t('nav.adminPanel') }}</RouterLink>
             <div class="menu-sep" />
             <div class="menu-lang" @click.stop><LanguageSwitcher /></div>
             <div class="menu-sep" />
@@ -253,6 +270,31 @@ function logout() {
 }
 .brand img {
   border-radius: 10px;
+}
+.console-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 99px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.console-link svg {
+  width: 16px;
+  height: 16px;
+}
+.brand__admin {
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .topnav {

@@ -78,6 +78,9 @@ const me = computed(() => auth.user);
 const professions = useProfessionsStore();
 
 const { t } = useI18n();
+/** Admins run the app; hiring, location and visibility settings only matter to members. */
+const isAdmin = computed(() => me.value?.role === 'admin');
+const MEMBER_SECTIONS = ['work', 'location', 'privacy'];
 const sections = computed(() =>
   [
     { id: 'profile', icon: UserRound },
@@ -89,7 +92,9 @@ const sections = computed(() =>
     { id: 'sessions', icon: MonitorSmartphone },
     { id: 'privacy', icon: ShieldCheck },
     { id: 'appearance', icon: Palette },
-  ].map((s) => ({ ...s, label: t(`settings.sections.${s.id}`) })),
+  ]
+    .filter((s) => !isAdmin.value || !MEMBER_SECTIONS.includes(s.id))
+    .map((s) => ({ ...s, label: t(`settings.sections.${s.id}`) })),
 );
 
 // ---------- Email verification ----------
@@ -172,6 +177,7 @@ function cancelEdit() {
 const summary = computed(() => {
   const u = me.value;
   const s = (key, params) => t(`settings.summary.${key}`, params);
+  const adminHidden = new Set([s('experience'), s('rate'), s('availability'), s('rating'), s('plan')]);
   return [
     { label: s('city'), value: u.city, icon: MapPin },
     { label: s('experience'), value: u.experienceYears ? s('years', { n: u.experienceYears }) : s('gettingStarted'), icon: Award },
@@ -193,7 +199,7 @@ const summary = computed(() => {
       to: '/plans',
     },
     { label: s('address'), value: u.address, icon: House, wide: true },
-  ];
+  ].filter((row) => !isAdmin.value || !adminHidden.has(row.label));
 });
 
 // ---------- Profession requests ----------
@@ -488,7 +494,7 @@ async function deleteAccount() {
               </li>
             </ul>
 
-            <section id="work" class="work">
+            <section v-if="!isAdmin" id="work" class="work">
               <header class="work__head">
                 <span class="section__icon"><BriefcaseBusiness /></span>
                 <div>
@@ -583,7 +589,7 @@ async function deleteAccount() {
         </UiCard>
 
         <!-- Location -->
-        <UiCard id="location" class="section">
+        <UiCard v-if="!isAdmin" id="location" class="section">
           <header class="section__head">
             <span class="section__icon"><MapPin /></span>
             <div>
@@ -694,7 +700,7 @@ async function deleteAccount() {
         </UiCard>
 
         <!-- Privacy -->
-        <UiCard id="privacy" class="section">
+        <UiCard v-if="!isAdmin" id="privacy" class="section">
           <header class="section__head">
             <span class="section__icon"><ShieldCheck /></span>
             <div>

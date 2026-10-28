@@ -29,6 +29,7 @@ import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSelect from '@/components/ui/UiSelect.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import AdminUserSheet from './AdminUserSheet.vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps({
   plans: { type: Array, default: () => [] },
@@ -37,35 +38,30 @@ const props = defineProps({
 });
 const emit = defineEmits(['changed']);
 
-const filters = ref({ q: '', role: 'all', status: props.initialStatus, plan: 'all', sort: props.initialStatus === 'pending' ? 'oldest' : 'newest' });
+const filters = ref({ q: '', role: 'member', status: props.initialStatus, plan: 'all', sort: props.initialStatus === 'pending' ? 'oldest' : 'newest' });
 const items = ref([]);
 const total = ref(0);
 const page = ref(1);
 const pages = ref(1);
 const loading = ref(true);
 
-const ROLE_OPTIONS = [
-  { value: 'all', label: 'All roles' },
-  { value: 'member', label: 'Members' },
-  { value: 'admin', label: 'Admins' },
-];
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'Any status' },
-  { value: 'pending', label: 'Waiting for approval' },
-  { value: 'active', label: 'Active' },
-  { value: 'suspended', label: 'Suspended' },
-  { value: 'rejected', label: 'Declined' },
-];
-const SORT_OPTIONS = [
-  { value: 'newest', label: 'Newest first' },
-  { value: 'oldest', label: 'Oldest first' },
-  { value: 'name', label: 'Name A–Z' },
-  { value: 'lastSeen', label: 'Recently active' },
-];
+const { t } = useI18n();
+const tu = (key, params, n) => (n === undefined ? t(`admin.users.${key}`, params ?? {}) : t(`admin.users.${key}`, params ?? {}, n));
+const options = (group, values) => computed(() => values.map((value) => ({ value, label: tu(`${group}.${value}`) })));
+const ROLE_OPTIONS = options('role', ['member', 'admin', 'all']);
+const STATUS_OPTIONS = options('status', ['all', 'pending', 'active', 'suspended', 'rejected']);
+const SORT_OPTIONS = options('sort', ['newest', 'oldest', 'name', 'lastSeen']);
+const noFilters = computed(
+  () => !filters.value.q && filters.value.role === 'member' && filters.value.status === 'all' && filters.value.plan === 'all',
+);
 const planOptions = () => [
-  { value: 'all', label: 'Any plan' },
+  { value: 'all', label: tu('anyPlan') },
   ...props.plans.map((p) => ({ value: p.id, label: p.name })),
 ];
+const countLabel = computed(() => {
+  const key = filters.value.role === 'member' ? 'countMembers' : filters.value.role === 'admin' ? 'countAdmins' : 'countAccounts';
+  return tu(key, { n: total.value }, total.value);
+});
 
 let requestId = 0;
 async function load() {
@@ -134,40 +130,34 @@ function toggleAll() {
 
 const bulkBusy = ref(false);
 const bulkPlan = ref('');
-const BULK_LABELS = {
-  approve: 'Approve',
-  reject: 'Decline',
-  suspend: 'Suspend',
-  reactivate: 'Reactivate',
-  plan: 'Change plan of',
-  delete: 'Permanently delete',
-};
+const BULK_LABELS = { approve: 'approve', reject: 'decline', suspend: 'suspend', reactivate: 'reactivate', plan: 'apply', delete: 'delete' };
 
 async function runBulk(action) {
   const ids = [...selected.value];
   if (!ids.length) return;
-  const count = `${ids.length} account${ids.length === 1 ? '' : 's'}`;
+  const n = ids.length;
+  const actionLabel = action === 'plan' ? tu('changePlan').replace('…', '') : tu(BULK_LABELS[action]);
   const payload = { ids, action };
   if (action === 'plan') {
     if (!bulkPlan.value) return;
     payload.planId = bulkPlan.value === 'default' ? null : bulkPlan.value;
   }
   if (action === 'reject') {
-    const note = window.prompt(`Decline ${count}? Optional note for the members:`, '');
+    const note = window.prompt(tu('declinePrompt', { n }), '');
     if (note === null) return;
     payload.note = note;
   } else if (action === 'delete') {
-    if (window.prompt(`Permanently delete ${count} and everything they own? Type DELETE to confirm.`) !== 'DELETE') return;
-  } else if (!window.confirm(`${BULK_LABELS[action]} ${count}?`)) {
+    if (window.prompt(tu('deletePrompt', { n })) !== 'DELETE') return;
+  } else if (!window.confirm(tu('bulkConfirm', { action: actionLabel, n }))) {
     return;
   }
   bulkBusy.value = true;
   try {
     const { data } = await api.post('/admin/users/bulk', payload);
-    if (data.done) toast.success(`${BULK_LABELS[action]}: ${data.done} done`);
+    if (data.done) toast.success(tu('bulkDone', { action: actionLabel, n: data.done }));
     if (data.failed.length) {
       toast.error(data.failed.map((f) => `${f.name}: ${f.message}`).slice(0, 4).join(' · '), {
-        title: `${data.failed.length} could not be changed`,
+        title: tu('bulkFailed', { n: data.failed.length }),
       });
     }
     selected.value = new Set();
@@ -200,36 +190,40 @@ async function exportCsv() {
     <div class="toolbar">
       <label class="search">
         <Search />
-        <input v-model.trim="filters.q" type="search" placeholder="Search by name, email, phone or city" aria-label="Search users" />
+        <input v-model.trim="filters.q" type="search" :placeholder="tu('searchPh')" :aria-label="tu('searchPh')" />
       </label>
-      <UiSelect v-model="filters.role" :options="ROLE_OPTIONS" aria-label="Role" />
-      <UiSelect v-model="filters.status" :options="STATUS_OPTIONS" aria-label="Status" />
-      <UiSelect v-model="filters.plan" :options="planOptions()" aria-label="Plan" />
-      <UiSelect v-model="filters.sort" :options="SORT_OPTIONS" aria-label="Sort" />
+      <UiSelect v-model="filters.role" :options="ROLE_OPTIONS" :aria-label="tu('col.member')" />
+      <UiSelect v-model="filters.status" :options="STATUS_OPTIONS" :aria-label="tu('col.status')" />
+      <UiSelect v-model="filters.plan" :options="planOptions()" :aria-label="tu('col.plan')" />
+      <UiSelect v-model="filters.sort" :options="SORT_OPTIONS" :aria-label="t('common.sortBy')" />
     </div>
 
     <div class="results">
-      <p class="muted"><strong>{{ total }}</strong> {{ total === 1 ? 'account' : 'accounts' }}</p>
-      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">Export CSV</UiButton>
+      <p class="muted"><strong>{{ countLabel }}</strong></p>
+      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">
+        {{ t('admin.exportCsv') }}
+      </UiButton>
     </div>
 
     <Transition name="fade">
-      <div v-if="selected.size" class="bulk" role="toolbar" aria-label="Bulk actions">
-        <strong>{{ selected.size }} selected</strong>
-        <UiButton size="sm" variant="soft" :icon="Check" :loading="bulkBusy" @click="runBulk('approve')">Approve</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="X" :disabled="bulkBusy" @click="runBulk('reject')">Decline</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="Ban" :disabled="bulkBusy" @click="runBulk('suspend')">Suspend</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="RotateCcw" :disabled="bulkBusy" @click="runBulk('reactivate')">Reactivate</UiButton>
+      <div v-if="selected.size" class="bulk" role="toolbar">
+        <strong>{{ tu('selected', { n: selected.size }) }}</strong>
+        <UiButton size="sm" variant="soft" :icon="Check" :loading="bulkBusy" @click="runBulk('approve')">{{ tu('approve') }}</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="X" :disabled="bulkBusy" @click="runBulk('reject')">{{ tu('decline') }}</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="Ban" :disabled="bulkBusy" @click="runBulk('suspend')">{{ tu('suspend') }}</UiButton>
+        <UiButton size="sm" variant="secondary" :icon="RotateCcw" :disabled="bulkBusy" @click="runBulk('reactivate')">
+          {{ tu('reactivate') }}
+        </UiButton>
         <span class="bulk__plan">
           <UiSelect
             v-model="bulkPlan"
-            :options="[{ value: '', label: 'Change plan…' }, { value: 'default', label: 'Default plan' }, ...plans.map((p) => ({ value: p.id, label: p.name }))]"
-            aria-label="Plan for the selected accounts"
+            :options="[{ value: '', label: tu('changePlan') }, { value: 'default', label: tu('defaultPlan') }, ...plans.map((p) => ({ value: p.id, label: p.name }))]"
+            :aria-label="tu('changePlan')"
           />
-          <UiButton size="sm" variant="secondary" :icon="Crown" :disabled="!bulkPlan || bulkBusy" @click="runBulk('plan')">Apply</UiButton>
+          <UiButton size="sm" variant="secondary" :icon="Crown" :disabled="!bulkPlan || bulkBusy" @click="runBulk('plan')">{{ tu('apply') }}</UiButton>
         </span>
-        <UiButton size="sm" variant="danger" :icon="Trash2" :disabled="bulkBusy" @click="runBulk('delete')">Delete</UiButton>
-        <button type="button" class="bulk__clear" aria-label="Clear selection" @click="selected = new Set()"><X /></button>
+        <UiButton size="sm" variant="danger" :icon="Trash2" :disabled="bulkBusy" @click="runBulk('delete')">{{ tu('delete') }}</UiButton>
+        <button type="button" class="bulk__clear" :aria-label="tu('clearSelection')" @click="selected = new Set()"><X /></button>
       </div>
     </Transition>
 
@@ -240,22 +234,22 @@ async function exportCsv() {
     <UiCard v-else-if="!items.length">
       <UiEmpty
         :icon="Users"
-        :title="filters.status === 'pending' ? 'Nobody is waiting for approval' : 'No accounts match'"
-        :description="filters.status === 'pending' ? 'New sign-ups appear here until an admin approves or declines them.' : 'Try another search or clear the filters.'"
+        :title="filters.status === 'pending' ? tu('emptyPendingTitle') : noFilters ? tu('emptyNoneTitle') : tu('emptyMatchTitle')"
+        :description="filters.status === 'pending' ? tu('emptyPendingText') : noFilters ? tu('emptyNoneText') : tu('emptyMatchText')"
       />
     </UiCard>
 
     <UiCard v-else :padded="false" class="table-card" :class="{ 'is-loading': loading }">
-      <div class="table" role="table" aria-label="Users">
+      <div class="table" role="table">
         <div class="row row--head" role="row">
           <span role="columnheader" class="pick">
-            <input type="checkbox" :checked="allSelected" aria-label="Select all on this page" @change="toggleAll" />
+            <input type="checkbox" :checked="allSelected" :aria-label="tu('selectAll')" @change="toggleAll" />
           </span>
-          <span role="columnheader">Member</span>
-          <span role="columnheader">Status</span>
-          <span role="columnheader">Plan</span>
-          <span role="columnheader" class="hide-sm">Activity</span>
-          <span role="columnheader" class="hide-md">Joined</span>
+          <span role="columnheader">{{ tu('col.member') }}</span>
+          <span role="columnheader">{{ tu('col.status') }}</span>
+          <span role="columnheader">{{ tu('col.plan') }}</span>
+          <span role="columnheader" class="hide-sm">{{ tu('col.activity') }}</span>
+          <span role="columnheader" class="hide-md">{{ tu('col.joined') }}</span>
         </div>
         <div
           v-for="u in items"
@@ -268,38 +262,39 @@ async function exportCsv() {
           @keydown.enter="open(u)"
         >
           <span class="pick" role="cell" @click.stop>
-            <input type="checkbox" :checked="selected.has(u.id)" :aria-label="`Select ${u.name}`" @change="toggle(u.id)" />
+            <input type="checkbox" :checked="selected.has(u.id)" :aria-label="tu('select', { name: u.name })" @change="toggle(u.id)" />
           </span>
           <span class="who" role="cell">
             <UiAvatar :name="u.name" :src="u.avatarUrl" :size="38" :online="u.isOnline && !u.suspendedAt" />
             <span class="who__text">
               <strong class="truncate">
                 {{ u.name }}
-                <ShieldHalf v-if="u.role === 'admin'" class="who__admin" aria-label="Admin" />
+                <ShieldHalf v-if="u.role === 'admin'" class="who__admin" :aria-label="tu('badge.admin')" />
               </strong>
               <small class="truncate">
                 {{ u.email }}
-                <MailCheck v-if="u.emailVerifiedAt" class="who__verified" aria-label="Email confirmed" />
+                <MailCheck v-if="u.emailVerifiedAt" class="who__verified" :aria-label="tu('emailConfirmed')" />
               </small>
             </span>
           </span>
           <span role="cell">
-            <UiBadge v-if="u.approvalStatus === 'pending'" tone="warning" :icon="Hourglass">Waiting</UiBadge>
-            <UiBadge v-else-if="u.approvalStatus === 'rejected'" tone="neutral">Declined</UiBadge>
-            <UiBadge v-else-if="u.suspendedAt" tone="danger" :icon="Ban">Suspended</UiBadge>
-            <UiBadge v-else-if="u.role === 'admin'" tone="primary">Admin</UiBadge>
-            <UiBadge v-else tone="success">Active</UiBadge>
+            <UiBadge v-if="u.approvalStatus === 'pending'" tone="warning" :icon="Hourglass">{{ tu('badge.waiting') }}</UiBadge>
+            <UiBadge v-else-if="u.approvalStatus === 'rejected'" tone="neutral">{{ tu('badge.declined') }}</UiBadge>
+            <UiBadge v-else-if="u.suspendedAt" tone="danger" :icon="Ban">{{ tu('badge.suspended') }}</UiBadge>
+            <UiBadge v-else-if="u.role === 'admin'" tone="primary">{{ tu('badge.admin') }}</UiBadge>
+            <UiBadge v-else tone="success">{{ tu('badge.active') }}</UiBadge>
           </span>
           <span role="cell" class="plan">
-            <template v-if="u.plan">
+            <span v-if="u.role === 'admin'" class="subtle">{{ tu('fullAccess') }}</span>
+            <template v-else-if="u.plan">
               <span class="plan__name"><Crown /> {{ u.plan.name }}</span>
-              <small v-if="u.planExpiresAt">until {{ formatDate(u.planExpiresAt) }}</small>
+              <small v-if="u.planExpiresAt">{{ tu('until', { date: formatDate(u.planExpiresAt) }) }}</small>
             </template>
-            <span v-else class="subtle">No plan</span>
+            <span v-else class="subtle">{{ tu('noPlan') }}</span>
           </span>
           <span role="cell" class="hide-sm activity">
-            <span>{{ u.connectionCount }} connections · {{ u.listingCount }} listings</span>
-            <small>{{ u.isOnline ? 'Online now' : u.lastSeenAt ? `Seen ${timeAgo(u.lastSeenAt)}` : 'Never signed in' }}</small>
+            <span>{{ tu('activity', { c: u.connectionCount, l: u.listingCount }) }}</span>
+            <small>{{ u.isOnline ? tu('onlineNow') : u.lastSeenAt ? tu('seen', { time: timeAgo(u.lastSeenAt) }) : tu('neverSignedIn') }}</small>
           </span>
           <span role="cell" class="hide-md subtle">{{ formatDate(u.createdAt) }}</span>
         </div>
@@ -307,9 +302,13 @@ async function exportCsv() {
     </UiCard>
 
     <div v-if="pages > 1" class="pager">
-      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">Previous</UiButton>
-      <span class="muted">Page {{ page }} of {{ pages }}</span>
-      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">Next</UiButton>
+      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">
+        {{ t('admin.pager.previous') }}
+      </UiButton>
+      <span class="muted">{{ t('admin.pager.page', { page, pages }) }}</span>
+      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">
+        {{ t('admin.pager.next') }}
+      </UiButton>
     </div>
 
     <AdminUserSheet v-model:open="sheetOpen" :user-id="selectedId" :plans="plans" @saved="onSaved" @deleted="onDeleted" />

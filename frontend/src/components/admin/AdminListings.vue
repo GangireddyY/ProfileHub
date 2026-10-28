@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { Search, Store, EyeOff, Eye, Trash2, Flag, ChevronLeft, ChevronRight, ExternalLink, Download } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { downloadFromApi } from '@/utils/download';
@@ -19,12 +20,9 @@ import UiAvatar from '@/components/ui/UiAvatar.vue';
 /** Moderate any member's marketplace listing: hide, restore or delete it, telling the seller why. */
 const emit = defineEmits(['changed']);
 
-const STATUS = [
-  { value: 'all', label: 'Any status' },
-  { value: 'active', label: 'Active' },
-  { value: 'archived', label: 'Hidden' },
-  { value: 'sold', label: 'Sold' },
-];
+const { t } = useI18n();
+const tl = (key, params, n) => (n === undefined ? t(`admin.listings.${key}`, params ?? {}) : t(`admin.listings.${key}`, params ?? {}, n));
+const STATUS = computed(() => ['all', 'active', 'archived', 'sold'].map((value) => ({ value, label: tl(`status.${value}`) })));
 const filters = ref({ q: '', status: 'all' });
 const items = ref([]);
 const total = ref(0);
@@ -80,10 +78,10 @@ async function confirm() {
   try {
     if (action.value === 'delete') {
       await api.delete(`/admin/listings/${l.id}`, { data: { reason: reason.value } });
-      toast.success(`“${l.title}” was deleted and the seller was told why`);
+      toast.success(tl('deleted', { title: l.title }));
     } else {
       await api.patch(`/admin/listings/${l.id}`, { status: 'archived', reason: reason.value });
-      toast.success(`“${l.title}” is hidden from the Market`);
+      toast.success(tl('hidden', { title: l.title }));
     }
     acting.value = null;
     load();
@@ -98,7 +96,7 @@ async function confirm() {
 async function restore(l) {
   try {
     await api.patch(`/admin/listings/${l.id}`, { status: 'active' });
-    toast.success(`“${l.title}” is visible again`);
+    toast.success(tl('visible', { title: l.title }));
     load();
     emit('changed');
   } catch (err) {
@@ -106,7 +104,7 @@ async function restore(l) {
   }
 }
 
-const STATUS_BADGE = { active: ['success', 'Active'], archived: ['neutral', 'Hidden'], sold: ['primary', 'Sold'] };
+const STATUS_TONE = { active: 'success', archived: 'neutral', sold: 'primary' };
 
 const exporting = ref(false);
 async function exportCsv() {
@@ -126,20 +124,22 @@ async function exportCsv() {
     <div class="toolbar">
       <label class="search">
         <Search />
-        <input v-model.trim="filters.q" type="search" placeholder="Search title, description or city" aria-label="Search listings" />
+        <input v-model.trim="filters.q" type="search" :placeholder="tl('searchPh')" :aria-label="tl('searchPh')" />
       </label>
-      <UiSelect v-model="filters.status" :options="STATUS" aria-label="Status" />
+      <UiSelect v-model="filters.status" :options="STATUS" :aria-label="tl('status.all')" />
     </div>
     <div class="results">
-      <p class="muted"><strong>{{ total }}</strong> {{ total === 1 ? 'listing' : 'listings' }}</p>
-      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">Export CSV</UiButton>
+      <p class="muted"><strong>{{ tl('count', { n: total }, total) }}</strong></p>
+      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">
+        {{ t('admin.exportCsv') }}
+      </UiButton>
     </div>
 
     <div v-if="loading && !items.length" class="stack" style="--gap: 8px">
       <UiSkeleton v-for="i in 5" :key="i" height="72px" />
     </div>
     <UiCard v-else-if="!items.length">
-      <UiEmpty :icon="Store" title="No listings" description="Members' marketplace listings show up here for moderation." />
+      <UiEmpty :icon="Store" :title="tl('emptyTitle')" :description="tl('emptyText')" />
     </UiCard>
 
     <div v-else class="list" :class="{ 'is-loading': loading }">
@@ -151,53 +151,50 @@ async function exportCsv() {
         <div class="grow info">
           <div class="info__top">
             <strong class="truncate">{{ l.title }}</strong>
-            <UiBadge :tone="STATUS_BADGE[l.status][0]">{{ STATUS_BADGE[l.status][1] }}</UiBadge>
-            <UiBadge v-if="l.openReports" tone="danger" :icon="Flag">{{ l.openReports }} open report{{ l.openReports === 1 ? '' : 's' }}</UiBadge>
+            <UiBadge :tone="STATUS_TONE[l.status]">{{ tl(`status.${l.status}`) }}</UiBadge>
+            <UiBadge v-if="l.openReports" tone="danger" :icon="Flag">{{ tl('openReports', { n: l.openReports }, l.openReports) }}</UiBadge>
           </div>
-          <span class="muted">{{ l.price ? formatMoney(l.price, l.currency) : 'Free' }} · {{ l.city || 'No city' }} · {{ timeAgo(l.createdAt) }}</span>
+          <span class="muted">
+            {{ l.price ? formatMoney(l.price, l.currency) : t('common.free') }} · {{ l.city || tl('noCity') }} · {{ timeAgo(l.createdAt) }}
+          </span>
           <span v-if="l.seller" class="seller">
             <UiAvatar :name="l.seller.name" :src="l.seller.avatarUrl" :size="20" /> {{ l.seller.name }}
             <span class="subtle">{{ l.seller.email }}</span>
           </span>
         </div>
         <div class="actions">
-          <UiButton variant="ghost" size="sm" :icon="ExternalLink" icon-only aria-label="Open listing" :to="`/market/${l.id}`" />
-          <UiButton v-if="l.status === 'archived'" variant="secondary" size="sm" :icon="Eye" @click="restore(l)">Restore</UiButton>
-          <UiButton v-else-if="l.status === 'active'" variant="secondary" size="sm" :icon="EyeOff" @click="ask(l, 'hide')">Hide</UiButton>
-          <UiButton variant="ghost" size="sm" :icon="Trash2" icon-only aria-label="Delete listing" @click="ask(l, 'delete')" />
+          <UiButton variant="ghost" size="sm" :icon="ExternalLink" icon-only :aria-label="tl('open')" :to="`/market/${l.id}`" />
+          <UiButton v-if="l.status === 'archived'" variant="secondary" size="sm" :icon="Eye" @click="restore(l)">{{ tl('restore') }}</UiButton>
+          <UiButton v-else-if="l.status === 'active'" variant="secondary" size="sm" :icon="EyeOff" @click="ask(l, 'hide')">{{ tl('hide') }}</UiButton>
+          <UiButton variant="ghost" size="sm" :icon="Trash2" icon-only :aria-label="tl('deleteListing')" @click="ask(l, 'delete')" />
         </div>
       </UiCard>
     </div>
 
     <div v-if="pages > 1" class="pager">
-      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">Previous</UiButton>
-      <span class="muted">Page {{ page }} of {{ pages }}</span>
-      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">Next</UiButton>
+      <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">
+        {{ t('admin.pager.previous') }}
+      </UiButton>
+      <span class="muted">{{ t('admin.pager.page', { page, pages }) }}</span>
+      <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">
+        {{ t('admin.pager.next') }}
+      </UiButton>
     </div>
 
     <UiSheet
       :open="Boolean(acting)"
-      :title="action === 'delete' ? 'Delete listing' : 'Hide listing'"
+      :title="action === 'delete' ? tl('deleteListing') : tl('hideListing')"
       width="460px"
       @update:open="(v) => !v && (acting = null)"
     >
       <div v-if="acting" class="stack" style="--gap: 12px">
-        <p>
-          <strong>“{{ acting.title }}”</strong> by {{ acting.seller?.name }} will be
-          {{ action === 'delete' ? 'deleted permanently with its photos' : 'hidden from the Market (you can restore it later)' }}.
-        </p>
-        <UiTextarea
-          v-model="reason"
-          label="Reason (sent to the seller)"
-          :maxlength="300"
-          :rows="3"
-          placeholder="e.g. Prohibited item under our marketplace rules"
-        />
+        <p>{{ tl(action === 'delete' ? 'willDelete' : 'willHide', { title: acting.title, seller: acting.seller?.name ?? '' }) }}</p>
+        <UiTextarea v-model="reason" :label="tl('reasonLabel')" :maxlength="300" :rows="3" :placeholder="tl('reasonPh')" />
       </div>
       <template #footer>
-        <UiButton variant="ghost" @click="acting = null">Cancel</UiButton>
+        <UiButton variant="ghost" @click="acting = null">{{ t('common.cancel') }}</UiButton>
         <UiButton variant="danger" :loading="busy" :disabled="reason.trim().length < 3" @click="confirm">
-          {{ action === 'delete' ? 'Delete listing' : 'Hide listing' }}
+          {{ action === 'delete' ? tl('deleteListing') : tl('hideListing') }}
         </UiButton>
       </template>
     </UiSheet>

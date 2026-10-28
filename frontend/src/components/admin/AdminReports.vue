@@ -1,5 +1,6 @@
 <script setup>
-import { ref, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { Flag, Check, X, UserRound, Store, MessagesSquare, Inbox, Settings2, RotateCcw, Star, Trash2 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
@@ -18,29 +19,15 @@ import AdminUserSheet from './AdminUserSheet.vue';
 const props = defineProps({ plans: { type: Array, default: () => [] } });
 const emit = defineEmits(['changed']);
 
-const STATUS_TABS = [
-  { value: 'open', label: 'Open' },
-  { value: 'resolved', label: 'Resolved' },
-  { value: 'dismissed', label: 'Dismissed' },
-  { value: 'all', label: 'All' },
-];
-const REASONS = {
-  spam: 'Spam',
-  scam: 'Scam or fraud',
-  harassment: 'Harassment',
-  fake: 'Fake profile',
-  misuse: 'Misused contact details',
-  prohibited: 'Prohibited item',
-  inappropriate: 'Inappropriate content',
-  other: 'Other',
-};
-const TARGET = {
-  user: { icon: UserRound, label: 'Profile' },
-  listing: { icon: Store, label: 'Listing' },
-  conversation: { icon: MessagesSquare, label: 'Conversation' },
-  review: { icon: Star, label: 'Review' },
-};
-const STATUS_BADGE = { open: ['warning', 'Open'], resolved: ['success', 'Resolved'], dismissed: ['neutral', 'Dismissed'] };
+const { t } = useI18n();
+const tr = (key, params) => t(`admin.reports.${key}`, params ?? {});
+const STATUS_TABS = computed(() => ['open', 'resolved', 'dismissed', 'all'].map((value) => ({ value, label: tr(`status.${value}`) })));
+const reasonLabel = (reason) => tr(`reason.${reason}`);
+const TARGET_ICONS = { user: UserRound, listing: Store, conversation: MessagesSquare, review: Star };
+const TARGET = computed(() =>
+  Object.fromEntries(Object.entries(TARGET_ICONS).map(([key, icon]) => [key, { icon, label: tr(`target.${key}`) }])),
+);
+const STATUS_TONE = { open: 'warning', resolved: 'success', dismissed: 'neutral' };
 
 const status = ref('open');
 const items = ref([]);
@@ -74,7 +61,7 @@ async function submit() {
   busy.value = true;
   try {
     await api.patch(`/admin/reports/${reviewing.value.id}`, { status: decision.value, note: note.value });
-    toast.success(decision.value === 'resolved' ? 'Report resolved' : decision.value === 'dismissed' ? 'Report dismissed' : 'Report reopened');
+    toast.success(tr(decision.value === 'resolved' ? 'resolved' : decision.value === 'dismissed' ? 'dismissed' : 'reopened'));
     reviewing.value = null;
     load();
     emit('changed');
@@ -98,11 +85,11 @@ function onUserChanged() {
 }
 
 async function removeReview(r) {
-  const reason = window.prompt('Remove this review? Optional note for the record:', r.details ? `Reported: ${r.details}`.slice(0, 300) : '');
+  const reason = window.prompt(tr('removeReviewPrompt'), r.details ? r.details.slice(0, 300) : '');
   if (reason === null) return;
   try {
     await api.delete(`/admin/reviews/${r.targetId}`, { data: { reason } });
-    toast.success('Review removed and the report resolved');
+    toast.success(tr('reviewRemoved'));
     load();
     emit('changed');
   } catch (err) {
@@ -134,8 +121,8 @@ async function removeReview(r) {
     <UiCard v-else-if="!items.length">
       <UiEmpty
         :icon="Inbox"
-        :title="status === 'open' ? 'No open reports' : 'Nothing here'"
-        description="When members report a profile, listing or conversation, it shows up here for review."
+        :title="status === 'open' ? tr('emptyOpen') : tr('emptyOther')"
+        :description="tr('emptyText')"
       />
     </UiCard>
 
@@ -145,40 +132,42 @@ async function removeReview(r) {
           <span class="report__icon"><component :is="TARGET[r.targetType].icon" /></span>
           <div class="grow" style="min-width: 0">
             <div class="report__top">
-              <strong>{{ REASONS[r.reason] || r.reason }}</strong>
-              <UiBadge :tone="STATUS_BADGE[r.status][0]">{{ STATUS_BADGE[r.status][1] }}</UiBadge>
-              <UiBadge v-if="r.openAgainstUser > 1" tone="danger" :icon="Flag">{{ r.openAgainstUser }} open reports on this member</UiBadge>
+              <strong>{{ reasonLabel(r.reason) }}</strong>
+              <UiBadge :tone="STATUS_TONE[r.status]">{{ tr(`status.${r.status}`) }}</UiBadge>
+              <UiBadge v-if="r.openAgainstUser > 1" tone="danger" :icon="Flag">{{ tr('openOnMember', { n: r.openAgainstUser }) }}</UiBadge>
             </div>
 
             <p class="report__target">
               {{ TARGET[r.targetType].label }}:
               <template v-if="r.targetType === 'listing'">
                 <RouterLink v-if="r.listing" :to="`/market/${r.targetId}`">“{{ r.listing.title }}”</RouterLink>
-                <span v-else class="subtle">listing deleted</span>
-                <template v-if="r.targetUser"> by </template>
+                <span v-else class="subtle">{{ tr('listingDeleted') }}</span>
+                <template v-if="r.targetUser"> {{ tr('by') }} </template>
               </template>
               <template v-else-if="r.targetType === 'review'">
                 <template v-if="r.review">
-                  {{ r.review.rating }}★ about
+                  {{ tr('reviewAbout', { rating: r.review.rating }) }}
                   <RouterLink v-if="r.review.reviewee" :to="{ path: `/u/${r.review.reviewee.id}`, hash: '#reviews' }">{{ r.review.reviewee.name }}</RouterLink>
-                  , written by
+                  {{ tr('writtenBy') }}
                 </template>
-                <span v-else class="subtle">review already removed · </span>
+                <span v-else class="subtle">{{ tr('reviewGone') }} </span>
               </template>
               <RouterLink v-if="r.targetUser" :to="`/u/${r.targetUser.id}`" class="who">
                 <UiAvatar :name="r.targetUser.name" :src="r.targetUser.avatarUrl" :size="20" /> {{ r.targetUser.name }}
               </RouterLink>
-              <span v-else-if="r.targetType !== 'listing'" class="subtle">member deleted</span>
-              <UiBadge v-if="r.targetUser?.suspendedAt" tone="danger">Suspended</UiBadge>
+              <span v-else-if="r.targetType !== 'listing'" class="subtle">{{ tr('memberDeleted') }}</span>
+              <UiBadge v-if="r.targetUser?.suspendedAt" tone="danger">{{ tr('suspended') }}</UiBadge>
             </p>
 
-            <p v-if="r.review?.comment" class="report__details">Review: “{{ r.review.comment }}”</p>
+            <p v-if="r.review?.comment" class="report__details">{{ tr('reviewText', { text: r.review.comment }) }}</p>
             <p v-if="r.details" class="report__details">“{{ r.details }}”</p>
             <p class="subtle report__meta">
-              Reported by {{ r.reporter?.name ?? 'a deleted member' }} {{ timeAgo(r.createdAt) }}
-              <template v-if="r.reviewer"> · {{ STATUS_BADGE[r.status][1].toLowerCase() }} by {{ r.reviewer.name }} {{ timeAgo(r.reviewedAt) }}</template>
+              {{ tr('reportedBy', { name: r.reporter?.name ?? tr('deletedMember'), time: timeAgo(r.createdAt) }) }}
+              <template v-if="r.reviewer">
+                · {{ tr('reviewedBy', { status: tr(`status.${r.status}`), name: r.reviewer.name, time: timeAgo(r.reviewedAt) }) }}
+              </template>
             </p>
-            <p v-if="r.resolutionNote" class="report__note">Note: “{{ r.resolutionNote }}”</p>
+            <p v-if="r.resolutionNote" class="report__note">{{ tr('note', { note: r.resolutionNote }) }}</p>
           </div>
         </div>
         <div class="report__actions">
@@ -189,42 +178,36 @@ async function removeReview(r) {
             :icon="Settings2"
             @click="manage(r.targetUser.id)"
           >
-            Manage member
+            {{ tr('manage') }}
           </UiButton>
           <UiButton v-if="r.targetType === 'review' && r.review" variant="danger" size="sm" :icon="Trash2" @click="removeReview(r)">
-            Remove review
+            {{ tr('removeReview') }}
           </UiButton>
           <template v-if="r.status === 'open'">
-            <UiButton variant="ghost" size="sm" :icon="X" @click="review(r, 'dismissed')">Dismiss</UiButton>
-            <UiButton size="sm" :icon="Check" @click="review(r, 'resolved')">Resolve</UiButton>
+            <UiButton variant="ghost" size="sm" :icon="X" @click="review(r, 'dismissed')">{{ tr('dismiss') }}</UiButton>
+            <UiButton size="sm" :icon="Check" @click="review(r, 'resolved')">{{ tr('resolve') }}</UiButton>
           </template>
-          <UiButton v-else variant="ghost" size="sm" :icon="RotateCcw" @click="review(r, 'open')">Reopen</UiButton>
+          <UiButton v-else variant="ghost" size="sm" :icon="RotateCcw" @click="review(r, 'open')">{{ tr('reopen') }}</UiButton>
         </div>
       </UiCard>
     </TransitionGroup>
 
     <UiSheet
       :open="Boolean(reviewing)"
-      :title="decision === 'resolved' ? 'Resolve report' : decision === 'dismissed' ? 'Dismiss report' : 'Reopen report'"
+      :title="tr(decision === 'resolved' ? 'resolveTitle' : decision === 'dismissed' ? 'dismissTitle' : 'reopenTitle')"
       width="440px"
       @update:open="(v) => !v && (reviewing = null)"
     >
       <div class="stack" style="--gap: 12px">
         <p class="muted">
-          {{
-            decision === 'resolved'
-              ? 'Use this once you have acted on it, for example by hiding the listing or suspending the member.'
-              : decision === 'dismissed'
-                ? 'Use this when nothing breaks the guidelines.'
-                : 'Move it back to the open queue.'
-          }}
+          {{ tr(decision === 'resolved' ? 'resolveText' : decision === 'dismissed' ? 'dismissText' : 'reopenText') }}
         </p>
-        <UiTextarea v-model="note" label="Internal note (optional)" :maxlength="300" :rows="3" />
+        <UiTextarea v-model="note" :label="tr('internalNote')" :maxlength="300" :rows="3" />
       </div>
       <template #footer>
-        <UiButton variant="ghost" @click="reviewing = null">Cancel</UiButton>
+        <UiButton variant="ghost" @click="reviewing = null">{{ t('common.cancel') }}</UiButton>
         <UiButton :loading="busy" @click="submit">
-          {{ decision === 'resolved' ? 'Resolve' : decision === 'dismissed' ? 'Dismiss' : 'Reopen' }}
+          {{ tr(decision === 'resolved' ? 'resolve' : decision === 'dismissed' ? 'dismiss' : 'reopen') }}
         </UiButton>
       </template>
     </UiSheet>

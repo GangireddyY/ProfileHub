@@ -126,7 +126,8 @@ router.get('/discover', searchLimiter, async (req, res) => {
   const f = validate(discoverSchema, req.query);
 
   const hidden = await blockedIdsFor(me.id);
-  const where = { id: { [Op.notIn]: [me.id, ...hidden] }, discoverable: true, ...ACTIVE_MEMBER };
+  // Admins run the app; they aren't members to hire or connect with.
+  const where = { id: { [Op.notIn]: [me.id, ...hidden] }, discoverable: true, role: 'member', ...ACTIVE_MEMBER };
   const and = [];
   // Picked professions and categories widen each other (OR), like any multi-select filter.
   if (f.professions.length || f.categories.length) {

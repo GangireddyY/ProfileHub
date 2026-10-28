@@ -32,6 +32,7 @@ import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
+import { useAuthStore } from '@/stores/auth';
 import ListingCard from '@/components/market/ListingCard.vue';
 import BackButton from '@/components/BackButton.vue';
 import ReportDialog from '@/components/ReportDialog.vue';
@@ -73,6 +74,8 @@ function step(delta) {
   const n = images.value.length;
   if (n) active.value = (active.value + delta + n) % n;
 }
+
+const viewerIsAdmin = computed(() => useAuthStore().user?.role === 'admin');
 
 function messageSeller() {
   router.push({
@@ -260,6 +263,9 @@ function onKey(e) {
                 <UiButton variant="danger" :icon="Trash2" class="grow" @click="confirmDelete = true">Delete</UiButton>
               </div>
             </div>
+            <UiButton v-else-if="viewerIsAdmin" size="lg" block :to="{ path: '/admin', query: { tab: 'listings' } }">
+              Moderate in admin panel
+            </UiButton>
             <template v-else-if="seller">
               <UiButton size="lg" block :icon="MessageCircle" :disabled="listing.status !== 'active'" @click="messageSeller">
                 Message seller
@@ -291,7 +297,7 @@ function onKey(e) {
             </div>
             <div class="row" style="--gap: 8px">
               <UiButton :to="`/u/${seller.id}`" variant="secondary" size="sm" class="grow">View profile</UiButton>
-              <ConnectButton :user="seller" size="sm" @change="seller.connectionStatus = $event.status" />
+              <ConnectButton v-if="!viewerIsAdmin" :user="seller" size="sm" @change="seller.connectionStatus = $event.status" />
             </div>
           </UiCard>
         </div>
