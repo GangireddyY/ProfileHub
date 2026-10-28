@@ -2,11 +2,12 @@
 import { watch, onBeforeUnmount, useId } from 'vue';
 import { X } from 'lucide-vue-next';
 
-/** Bottom sheet on phones, centred dialog on larger screens. */
+/** Bottom sheet on phones; on larger screens a centred dialog, or a full-height drawer when `side` is 'right'. */
 const open = defineModel('open', { type: Boolean, default: false });
 defineProps({
   title: { type: String, default: '' },
   width: { type: String, default: '520px' },
+  side: { type: String, default: 'center', validator: (v) => ['center', 'right'].includes(v) },
 });
 
 const titleId = useId();
@@ -30,7 +31,7 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="sheet">
-      <div v-if="open" class="sheet-backdrop" @click.self="open = false">
+      <div v-if="open" class="sheet-backdrop" :class="`is-${side}`" @click.self="open = false">
         <div class="sheet" role="dialog" aria-modal="true" :aria-labelledby="titleId" :style="{ '--w': width }">
           <div class="sheet__grip" aria-hidden="true" />
           <header class="sheet__head">
@@ -145,6 +146,40 @@ onBeforeUnmount(() => {
   .sheet-enter-from .sheet,
   .sheet-leave-to .sheet {
     transform: translateY(16px) scale(0.98);
+  }
+
+  .sheet-backdrop.is-right {
+    align-items: stretch;
+    justify-content: flex-end;
+    padding: 0;
+    background: rgba(8, 12, 28, 0.25);
+    backdrop-filter: none;
+  }
+  .is-right .sheet {
+    max-width: min(var(--w), 100vw);
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border-left: 1px solid var(--border);
+  }
+  .is-right .sheet__head {
+    padding: 18px 20px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .is-right .sheet__body {
+    flex: 1;
+    padding-top: 18px;
+  }
+  .is-right .sheet__foot {
+    background: var(--surface);
+  }
+  .sheet-enter-active.is-right .sheet,
+  .sheet-leave-active.is-right .sheet {
+    transition: transform 0.32s var(--ease);
+  }
+  .sheet-enter-from.is-right .sheet,
+  .sheet-leave-to.is-right .sheet {
+    transform: translateX(100%);
   }
 }
 </style>

@@ -5,6 +5,7 @@ import { Star, Flag, Trash2, Pencil, MessageSquareQuote, Info } from 'lucide-vue
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/composables/useToast';
+import { dialog } from '@/composables/useDialog';
 import { timeAgo } from '@/utils/format';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
@@ -95,7 +96,12 @@ async function save() {
 }
 
 async function removeMine() {
-  if (!window.confirm(t('reviews.removeConfirm'))) return;
+  const confirmed = await dialog.confirm({
+    title: t('reviews.removeConfirm'),
+    confirmLabel: t('reviews.remove'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   try {
     await api.delete(`/reviews/user/${props.member.id}`);
     formOpen.value = false;
@@ -107,7 +113,14 @@ async function removeMine() {
 }
 
 async function adminRemove(review) {
-  const reason = window.prompt(t('reviews.adminRemoveReason'), '');
+  const reason = await dialog.prompt({
+    title: t('reviews.adminRemove'),
+    label: t('reviews.adminRemoveReason'),
+    multiline: true,
+    maxLength: 300,
+    confirmLabel: t('reviews.adminRemove'),
+    tone: 'danger',
+  });
   if (reason === null) return;
   try {
     await api.delete(`/admin/reviews/${review.id}`, { data: { reason } });

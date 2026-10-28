@@ -35,6 +35,8 @@ import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { useRealtimeStore } from '@/stores/realtime';
 import { toast } from '@/composables/useToast';
+import { dialog } from '@/composables/useDialog';
+import { t } from '@/i18n';
 import { getProfession } from '@/constants/professions';
 import { formatDistance, lastSeenLabel, formatCount, formatRate, timeAgo } from '@/utils/format';
 import { RATE_UNITS } from '@/constants/professions';
@@ -145,7 +147,17 @@ const reportOpen = ref(false);
 const blocking = ref(false);
 async function toggleBlock() {
   const u = user.value;
-  if (!u.blockedByMe && !window.confirm(`Block ${u.name}? You won't be able to message or see each other, and any connection is removed.`)) return;
+  if (
+    !u.blockedByMe &&
+    !(await dialog.confirm({
+      title: t('chat.block', { name: u.name }),
+      message: `${t('chat.blockConfirm', { name: u.name })} Any connection between you is removed.`,
+      confirmLabel: t('chat.block', { name: u.name.split(' ')[0] }),
+      tone: 'block',
+    }))
+  ) {
+    return;
+  }
   blocking.value = true;
   try {
     if (u.blockedByMe) await api.delete(`/blocks/${u.id}`);

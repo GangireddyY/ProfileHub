@@ -25,16 +25,18 @@ export async function sellersAmong(ids) {
 }
 
 /**
- * Connections can always talk. Anyone may also contact a member who is selling something,
- * and that seller may reply to people who wrote to them.
+ * Needs a plan with "messaging". Then connections can talk, anyone may contact a member who is
+ * selling something, and that seller may reply to people who wrote to them.
  */
 export async function canMessage(senderId, receiverId) {
   const [sender, receiver] = await Promise.all([User.findByPk(senderId), User.findByPk(receiverId)]);
   if (!receiver || !receiver.isActiveMember) return false;
+  const limits = await limitsFor(sender);
+  if (!limits.messaging) return false;
   if (await isBlockedBetween(senderId, receiverId)) return false;
   if (await areConnected(senderId, receiverId)) return true;
   // Plans with "message anyone" may start a conversation with any active member.
-  if ((await limitsFor(sender)).messageAnyone) return true;
+  if (limits.messageAnyone) return true;
   const sellers = await sellersAmong([senderId, receiverId]);
   if (sellers.has(receiverId)) return true;
   // Anyone may reply to someone who wrote to them first.
@@ -48,9 +50,11 @@ export async function messageableAmong(me, partnerIds, wroteToMe) {
     blockedIdsFor(me),
     User.findAll({ where: { id: { [Op.in]: partnerIds }, ...ACTIVE_MEMBER }, attributes: ['id'] }),
   ]);
+  const limits = await limitsFor(user);
+  if (!limits.messaging) return new Set();
   const reachable = new Set(active.map((u) => u.id));
   const candidates = partnerIds.filter((id) => reachable.has(id) && !blocked.has(id));
-  if ((await limitsFor(user)).messageAnyone) return new Set(candidates);
+  if (limits.messageAnyone) return new Set(candidates);
   const [connected, sellers] = await Promise.all([getConnectionIds(me), sellersAmong(candidates)]);
   return new Set(candidates.filter((id) => connected.has(id) || sellers.has(id) || wroteToMe.has(id)));
 }
@@ -86,6 +90,10 @@ export async function sendMessage(senderId, receiverId, rawBody, { files = [] } 
     throw new HttpError(403, "You can't message this member.", { code: 'blocked' });
   }
   if (!(await canMessage(senderId, receiverId))) {
+    const sender = await User.findByPk(senderId);
+    if (sender && !(await limitsFor(sender)).messaging) {
+      throw planLimit("Messaging isn't included in your plan. Upgrade your plan to chat with members.");
+    }
     throw planLimit(
       'You can message people in your network or members who are selling something. Upgrade your plan to message anyone.',
     );
@@ -125,6 +133,9 @@ function broadcastUpdate(message) {
 
 export async function editMessage(userId, id, rawBody) {
   const message = await findOwnMessage(userId, id);
+  if (!(await limitsFor(await User.findByPk(userId))).messaging) {
+    throw planLimit("Messaging isn't included in your plan. Upgrade your plan to chat with members.");
+  }
   if (Date.now() - new Date(message.createdAt).getTime() > EDIT_WINDOW_MS) {
     throw badRequest('Messages can only be edited for 15 minutes after sending');
   }

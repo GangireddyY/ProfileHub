@@ -20,6 +20,7 @@ import { MAX_CHAT_IMAGES, MAX_CHAT_IMAGE_BYTES, CHAT_IMAGE_MIME_TYPES } from '..
 import { validate, notFound, badRequest } from '../utils/http.js';
 import { messageLimiter, chatPhotoLimiter } from '../middleware/limits.js';
 import { blockState } from '../services/safety.js';
+import { limitsFor, planLimit } from '../services/entitlements.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -138,6 +139,12 @@ router.post('/:userId', messageLimiter, async (req, res) => {
 router.post('/:userId/photos', chatPhotoLimiter, messageLimiter, upload.array('photos', MAX_CHAT_IMAGES), async (req, res) => {
   const otherId = validate(idSchema, req.params.userId);
   if (!req.files?.length) throw badRequest('Choose at least one photo');
+  const { maxChatPhotos, messaging } = await limitsFor(req.user);
+  if (!messaging) throw planLimit("Messaging isn't included in your plan. Upgrade your plan to chat with members.");
+  if (!maxChatPhotos) throw planLimit('Sending photos in chat is not included in your plan. Upgrade to share photos.');
+  if (req.files.length > maxChatPhotos) {
+    throw planLimit(`Your plan lets you send up to ${maxChatPhotos} photo${maxChatPhotos === 1 ? '' : 's'} per message. Upgrade to send more.`);
+  }
   const message = await sendMessage(req.user.id, otherId, req.body?.body, { files: req.files });
   res.status(201).json({ message });
 });

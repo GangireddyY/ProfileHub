@@ -19,7 +19,8 @@ const errors = ref({});
 const formError = ref('');
 const loading = ref(false);
 const pendingNotice = ref(route.query.pending ? t('auth.pendingCreated') : '');
-const switching = computed(() => Boolean(route.query.switch) && auth.isAuthed);
+/** Only when sent here from the admin panel without an admin account; a plain /login just shows the form. */
+const switching = computed(() => route.query.switch === 'admin' && auth.isAuthed);
 
 async function submit() {
   errors.value = {};

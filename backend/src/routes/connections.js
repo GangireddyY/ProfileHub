@@ -10,11 +10,23 @@ import { notify, clearRequestNotifications, markRequestHandled } from '../servic
 import { validate, badRequest, notFound } from '../utils/http.js';
 import { isBlockedBetween, ACTIVE_MEMBER } from '../services/safety.js';
 import { connectionRequestLimiter } from '../middleware/limits.js';
+import { limitsFor, planLimit } from '../services/entitlements.js';
 
 const router = Router();
 router.use(requireAuth);
 
 const idSchema = z.uuid('Invalid id');
+
+/** Plans cap how many new invitations a member can send in 24 hours (`maxDailyInvites: null` = unlimited). */
+async function assertInviteAllowance(me) {
+  const { maxDailyInvites } = await limitsFor(me);
+  if (maxDailyInvites == null) return;
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const sent = await Connection.count({ where: { requesterId: me.id, updatedAt: { [Op.gte]: since } } });
+  if (sent >= maxDailyInvites) {
+    throw planLimit(`Your plan allows ${maxDailyInvites} invitations a day. Try again tomorrow or upgrade for more.`);
+  }
+}
 
 function notifyNetworkChanged(...userIds) {
   for (const id of userIds) emitToUser(id, 'network:changed', {});
@@ -107,6 +119,7 @@ router.post('/:userId', connectionRequestLimiter, async (req, res) => {
   const row = await findPair(me.id, targetId);
 
   if (!row) {
+    await assertInviteAllowance(me);
     const created = await Connection.create({ requesterId: me.id, addresseeId: targetId });
     await sendRequestEvent(created, me);
     return res.status(201).json({ status: STATUS.OUTGOING, connectionId: created.id });
@@ -123,6 +136,7 @@ router.post('/:userId', connectionRequestLimiter, async (req, res) => {
   }
 
   // I previously declined them and now want to connect: flip the request around.
+  await assertInviteAllowance(me);
   await row.update({ requesterId: me.id, addresseeId: targetId, status: 'pending', respondedAt: null });
   await sendRequestEvent(row, me);
   res.json({ status: STATUS.OUTGOING, connectionId: row.id });

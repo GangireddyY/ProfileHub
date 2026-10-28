@@ -166,7 +166,8 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : undefined };
   }
   // `?switch` lets a signed-in tab sign in as another account (sessions are per tab).
-  if (to.meta.guestOnly && auth.isAuthed && !to.query.switch) return { name: auth.user?.role === 'admin' ? 'admin' : 'discover' };
+  // Sign-in and sign-up stay reachable while signed in: signing in switches only this tab (sessions are per tab),
+  // and creating an account doesn't sign anyone out. The pages explain this to the signed-in user.
   // Admins run the app: member pages (Discover, Market, Network, Messages, Plans) send them to the admin panel.
   if (to.meta.memberOnly && auth.user?.role === 'admin') return { name: 'admin' };
   if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {

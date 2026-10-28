@@ -28,6 +28,12 @@ const CATEGORIES = computed(() =>
       ],
 );
 
+/** Message, network and plan alerts are plan features; account and admin notices are always on. */
+const PLAN_GATED = ['messages', 'network', 'plans'];
+const emailLocked = computed(() => me.value?.limits && !me.value.limits.emailAlerts);
+const pushLocked = computed(() => me.value?.limits && !me.value.limits.pushAlerts);
+const locked = (channel, category) => PLAN_GATED.includes(category) && (channel === 'email' ? emailLocked.value : pushLocked.value);
+
 const saving = reactive({});
 const prefs = computed(() => me.value?.notifyPrefs || { email: {}, push: {} });
 
@@ -46,7 +52,7 @@ async function setPref(channel, category, value) {
 
 const model = (channel, category) =>
   computed({
-    get: () => prefs.value[channel]?.[category] !== false,
+    get: () => !locked(channel, category) && prefs.value[channel]?.[category] !== false,
     set: (v) => setPref(channel, category, v),
   });
 const toggles = computed(() =>
@@ -136,6 +142,11 @@ onMounted(refreshDevice);
     </div>
 
     <p v-if="!me.emailVerifiedAt" class="np__problem"><Mail /> {{ t('notify.emailNeedsVerify') }}</p>
+    <p v-if="emailLocked || pushLocked" class="np__plan">
+      <Crown />
+      <span>{{ emailLocked && pushLocked ? t('notify.bothPlan') : emailLocked ? t('notify.emailPlan') : t('notify.pushPlan') }}</span>
+      <RouterLink to="/plans">{{ t('common.viewPlans') }}</RouterLink>
+    </p>
 
     <div class="np__table" role="table" :aria-label="t('notify.title')">
       <div class="np__row np__row--head" role="row">
@@ -152,10 +163,16 @@ onMounted(refreshDevice);
           </div>
         </div>
         <div class="np__col" role="cell">
-          <UiToggle v-model="toggles[c.key].email.value" :loading="saving[`email.${c.key}`]" :aria-label="`${t(`notify.cat.${c.key}`)} · ${t('notify.email')}`" />
+          <UiToggle
+            v-model="toggles[c.key].email.value"
+            :disabled="locked('email', c.key)"
+            :loading="saving[`email.${c.key}`]" :aria-label="`${t(`notify.cat.${c.key}`)} · ${t('notify.email')}`" />
         </div>
         <div class="np__col" role="cell">
-          <UiToggle v-model="toggles[c.key].push.value" :loading="saving[`push.${c.key}`]" :aria-label="`${t(`notify.cat.${c.key}`)} · ${t('notify.push')}`" />
+          <UiToggle
+            v-model="toggles[c.key].push.value"
+            :disabled="locked('push', c.key)"
+            :loading="saving[`push.${c.key}`]" :aria-label="`${t(`notify.cat.${c.key}`)} · ${t('notify.push')}`" />
         </div>
       </div>
     </div>
@@ -214,6 +231,28 @@ onMounted(refreshDevice);
   width: 15px;
   height: 15px;
   flex-shrink: 0;
+}
+.np__plan {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  font-size: 0.84rem;
+  color: var(--text-2);
+}
+.np__plan svg {
+  width: 16px;
+  height: 16px;
+  color: var(--warning);
+  flex-shrink: 0;
+}
+.np__plan a {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--primary);
 }
 .np__table {
   display: flex;

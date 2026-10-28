@@ -664,6 +664,7 @@ router.patch('/plans/:id', async (req, res) => {
       summary: `Edited ${describeFields(changes)}`,
       data: { changes },
     });
+    broadcast('plans:updated', { planId: plan.id });
   }
   res.json({ plan: { ...plan.toPublic(), subscriberCount: await User.count({ where: { planId: plan.id } }) } });
 });
@@ -680,6 +681,7 @@ router.delete('/plans/:id', async (req, res) => {
     targetLabel: plan.name,
     summary: `Deleted plan ${plan.name}${moved ? `; ${moved} member(s) moved to ${fallback?.name ?? 'no plan'}` : ''}`,
   });
+  broadcast('plans:updated', { planId: plan.id });
   res.status(204).end();
 });
 

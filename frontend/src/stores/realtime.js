@@ -146,6 +146,14 @@ export const useRealtimeStore = defineStore('realtime', () => {
       auth.fetchMe().catch(() => {});
     });
 
+    // An admin edited a plan: pick up the new limits without a reload.
+    s.on('plans:updated', () => {
+      if (auth.user?.role === 'admin') return;
+      auth.fetchMe().catch(() => {});
+      if (chat.conversationsLoaded) chat.loadConversations().catch(() => {});
+      if (chat.activeUserId) chat.openThread(chat.activeUserId).catch(() => {});
+    });
+
     socket.value = s;
   }
 

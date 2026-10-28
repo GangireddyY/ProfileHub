@@ -28,6 +28,7 @@ import {
 import { SENSITIVE_PATTERN } from '@/constants/legal';
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
+import { dialog } from '@/composables/useDialog';
 import UiDropdown from '@/components/ui/UiDropdown.vue';
 import ReportDialog from '@/components/ReportDialog.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -46,7 +47,6 @@ const props = defineProps({
   initialDraft: { type: String, default: '' },
 });
 
-const MAX_PHOTOS = 4;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
 const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -55,6 +55,10 @@ const { t: tr } = useI18n();
 const auth = useAuthStore();
 const chat = useChatStore();
 const realtime = useRealtimeStore();
+/** Photos per message allowed by the member's plan; 0 means photos aren't included. */
+const MAX_PHOTOS = computed(() => auth.user?.limits?.maxChatPhotos ?? 4);
+/** The member's plan has messaging switched off, so nothing can be sent in any chat. */
+const messagingLocked = computed(() => auth.user?.limits?.messaging === false);
 
 const scroller = ref(null);
 const input = ref(null);
@@ -68,7 +72,17 @@ const blocking = ref(false);
 async function toggleBlock() {
   const blocked = t.value?.blockedByMe;
   const name = other.value?.name || '';
-  if (!blocked && !window.confirm(tr('chat.blockConfirm', { name }))) return;
+  if (
+    !blocked &&
+    !(await dialog.confirm({
+      title: tr('chat.block', { name }),
+      message: tr('chat.blockConfirm', { name }),
+      confirmLabel: tr('chat.block', { name: name.split(' ')[0] }),
+      tone: 'block',
+    }))
+  ) {
+    return;
+  }
   blocking.value = true;
   try {
     if (blocked) await api.delete(`/blocks/${props.userId}`);
@@ -84,7 +98,13 @@ async function toggleBlock() {
 }
 
 async function deleteConversation() {
-  if (!window.confirm(tr('chat.deleteChatConfirm', { name: other.value?.name || '' }))) return;
+  const confirmed = await dialog.confirm({
+    title: tr('chat.deleteChat'),
+    message: tr('chat.deleteChatConfirm', { name: other.value?.name || '' }),
+    confirmLabel: tr('common.delete'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   try {
     await chat.clearConversation(props.userId);
     toast.success(tr('chat.chatDeleted'));
@@ -142,24 +162,6 @@ async function onScroll() {
   el.scrollTop = el.scrollHeight - prevHeight + prevTop;
 }
 
-watch(
-  () => props.userId,
-  async (id, oldId) => {
-    if (oldId) {
-      stopTyping(oldId);
-      chat.closeThread(oldId);
-    }
-    draft.value = oldId ? '' : props.initialDraft;
-    clearPhotos();
-    cancelEdit();
-    await chat.openThread(id);
-    scrollToBottom();
-    if (draft.value) nextTick(autoGrow);
-    if (!coarsePointer || draft.value) input.value?.focus();
-  },
-  { immediate: true },
-);
-
 // Watch the newest message (not the length) so prepending older history doesn't jump to the bottom.
 const lastMessage = computed(() => {
   const list = t.value?.messages;
@@ -208,9 +210,10 @@ const photos = ref([]);
 
 function addFiles(list) {
   const files = [...(list || [])];
+  if (!MAX_PHOTOS.value) return pickPhotos();
   for (const file of files) {
-    if (photos.value.length >= MAX_PHOTOS) {
-      toast.error(tr('chat.maxPhotos', { n: MAX_PHOTOS }));
+    if (photos.value.length >= MAX_PHOTOS.value) {
+      toast.error(tr('chat.maxPhotos', { n: MAX_PHOTOS.value }), { action: { label: tr('common.viewPlans'), to: '/plans' } });
       break;
     }
     if (!PHOTO_TYPES.includes(file.type)) {
@@ -225,6 +228,14 @@ function addFiles(list) {
   }
   if (fileInput.value) fileInput.value.value = '';
   if (photos.value.length) nextTick(() => input.value?.focus());
+}
+
+function pickPhotos() {
+  if (!MAX_PHOTOS.value) {
+    toast.info(tr('chat.photosLocked'), { action: { label: tr('common.viewPlans'), to: '/plans' } });
+    return;
+  }
+  fileInput.value?.click();
 }
 
 function removePhoto(key) {
@@ -280,7 +291,13 @@ async function saveEdit() {
 }
 
 async function removeMessage(m) {
-  if (!window.confirm(tr('chat.deleteConfirm'))) return;
+  const confirmed = await dialog.confirm({
+    title: tr('chat.deleteConfirm'),
+    message: tr('chat.deleteMessageText'),
+    confirmLabel: tr('chat.deleteMessage'),
+    tone: 'danger',
+  });
+  if (!confirmed) return;
   try {
     await chat.deleteMessage(m.id);
     if (editing.value?.id === m.id) cancelEdit();
@@ -343,6 +360,25 @@ function onViewerKey(e) {
 function onVisibility() {
   if (document.visibilityState === 'visible') chat.markRead(props.userId);
 }
+
+// Runs immediately, so it must stay below every ref and helper it touches (photos, editing, draft…).
+watch(
+  () => props.userId,
+  async (id, oldId) => {
+    if (oldId) {
+      stopTyping(oldId);
+      chat.closeThread(oldId);
+    }
+    draft.value = oldId ? '' : props.initialDraft;
+    clearPhotos();
+    cancelEdit();
+    await chat.openThread(id);
+    scrollToBottom();
+    if (draft.value) nextTick(autoGrow);
+    if (!coarsePointer || draft.value) input.value?.focus();
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   document.addEventListener('visibilitychange', onVisibility);
@@ -517,6 +553,11 @@ onBeforeUnmount(() => {
         <Lock />
         <span>{{ tr('chat.unavailable') }}</span>
       </template>
+      <template v-else-if="messagingLocked">
+        <Lock />
+        <span>{{ tr('chat.planLocked') }}</span>
+        <UiButton to="/plans" size="sm" variant="soft">{{ tr('chat.seePlans') }}</UiButton>
+      </template>
       <template v-else>
         <Lock />
         <span>{{ tr('chat.locked') }}</span>
@@ -558,8 +599,9 @@ onBeforeUnmount(() => {
           class="composer__attach"
           :aria-label="tr('chat.attach')"
           :title="tr('chat.attach')"
-          :disabled="!t?.loaded || photos.length >= MAX_PHOTOS"
-          @click="fileInput?.click()"
+          :class="{ 'is-locked': !MAX_PHOTOS }"
+          :disabled="!t?.loaded || (MAX_PHOTOS > 0 && photos.length >= MAX_PHOTOS)"
+          @click="pickPhotos"
         >
           <ImagePlus />
         </button>
@@ -1119,7 +1161,8 @@ onBeforeUnmount(() => {
   background: var(--primary-soft);
   color: var(--primary);
 }
-.composer__attach:disabled {
+.composer__attach:disabled,
+.composer__attach.is-locked {
   opacity: 0.4;
 }
 .composer__attach svg {

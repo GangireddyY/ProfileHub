@@ -19,6 +19,7 @@ import {
 import { api, errorMessage } from '@/api/http';
 import { downloadFromApi } from '@/utils/download';
 import { toast } from '@/composables/useToast';
+import { dialog } from '@/composables/useDialog';
 import { timeAgo } from '@/utils/format';
 import { formatDate } from '@/constants/plans';
 import UiCard from '@/components/ui/UiCard.vue';
@@ -58,6 +59,16 @@ const planOptions = () => [
   { value: 'all', label: tu('anyPlan') },
   ...props.plans.map((p) => ({ value: p.id, label: p.name })),
 ];
+const statusOf = (u) =>
+  u.approvalStatus === 'pending'
+    ? 'pending'
+    : u.approvalStatus === 'rejected'
+      ? 'rejected'
+      : u.suspendedAt
+        ? 'suspended'
+        : u.role === 'admin'
+          ? 'admin'
+          : 'active';
 const countLabel = computed(() => {
   const key = filters.value.role === 'member' ? 'countMembers' : filters.value.role === 'admin' ? 'countAdmins' : 'countAccounts';
   return tu(key, { n: total.value }, total.value);
@@ -143,13 +154,32 @@ async function runBulk(action) {
     payload.planId = bulkPlan.value === 'default' ? null : bulkPlan.value;
   }
   if (action === 'reject') {
-    const note = window.prompt(tu('declinePrompt', { n }), '');
+    const note = await dialog.prompt({
+      title: tu('declineTitle', { n }, n),
+      label: tu('noteLabel'),
+      multiline: true,
+      maxLength: 300,
+      confirmLabel: tu('decline'),
+      tone: 'warning',
+    });
     if (note === null) return;
     payload.note = note;
   } else if (action === 'delete') {
-    if (window.prompt(tu('deletePrompt', { n })) !== 'DELETE') return;
-  } else if (!window.confirm(tu('bulkConfirm', { action: actionLabel, n }))) {
-    return;
+    const typed = await dialog.prompt({
+      title: tu('deleteTitle', { n }, n),
+      message: tu('deleteText'),
+      match: 'DELETE',
+      confirmLabel: tu('delete'),
+      tone: 'danger',
+    });
+    if (typed !== 'DELETE') return;
+  } else {
+    const confirmed = await dialog.confirm({
+      title: tu('bulkConfirm', { action: actionLabel, n }),
+      confirmLabel: actionLabel,
+      tone: action === 'suspend' ? 'block' : 'primary',
+    });
+    if (!confirmed) return;
   }
   bulkBusy.value = true;
   try {
@@ -186,49 +216,87 @@ async function exportCsv() {
 </script>
 
 <template>
-  <div class="stack" style="--gap: 14px">
-    <div class="toolbar">
-      <label class="search">
-        <Search />
-        <input v-model.trim="filters.q" type="search" :placeholder="tu('searchPh')" :aria-label="tu('searchPh')" />
-      </label>
-      <UiSelect v-model="filters.role" :options="ROLE_OPTIONS" :aria-label="tu('col.member')" />
-      <UiSelect v-model="filters.status" :options="STATUS_OPTIONS" :aria-label="tu('col.status')" />
-      <UiSelect v-model="filters.plan" :options="planOptions()" :aria-label="tu('col.plan')" />
-      <UiSelect v-model="filters.sort" :options="SORT_OPTIONS" :aria-label="t('common.sortBy')" />
-    </div>
+  <div class="users">
+    <section class="filters">
+      <div class="filters__top">
+        <label class="search">
+          <Search />
+          <input v-model.trim="filters.q" type="search" :placeholder="tu('searchPh')" :aria-label="tu('searchPh')" />
+          <button v-if="filters.q" type="button" class="search__clear" :aria-label="t('common.clearSearch')" @click="filters.q = ''"><X /></button>
+        </label>
+        <div class="filters__selects">
+          <UiSelect v-model="filters.role" :options="ROLE_OPTIONS" :aria-label="tu('col.member')" />
+          <UiSelect v-model="filters.plan" :options="planOptions()" :aria-label="tu('col.plan')" />
+          <UiSelect v-model="filters.sort" :options="SORT_OPTIONS" :aria-label="t('common.sortBy')" />
+        </div>
+      </div>
+      <div class="chips" role="group" :aria-label="tu('col.status')">
+        <button
+          v-for="o in STATUS_OPTIONS"
+          :key="o.value"
+          type="button"
+          class="chip"
+          :class="[`chip--${o.value}`, { 'is-active': filters.status === o.value }]"
+          :aria-pressed="filters.status === o.value"
+          @click="filters.status = o.value"
+        >
+          <span class="chip__dot" />
+          {{ o.label }}
+        </button>
+      </div>
+    </section>
 
     <div class="results">
-      <p class="muted"><strong>{{ countLabel }}</strong></p>
-      <UiButton size="sm" variant="ghost" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">
+      <label v-if="items.length" class="pick-all" :title="tu('selectAll')">
+        <input type="checkbox" :checked="allSelected" :indeterminate="selected.size > 0 && !allSelected" @change="toggleAll" />
+        <span class="pick-all__text">{{ tu('selectAll') }}</span>
+      </label>
+      <span class="results__count">
+        <Users />
+        <strong>{{ countLabel }}</strong>
+      </span>
+      <UiButton class="results__export" size="sm" variant="secondary" :icon="Download" :loading="exporting" :disabled="!total" @click="exportCsv">
         {{ t('admin.exportCsv') }}
       </UiButton>
     </div>
 
     <Transition name="fade">
       <div v-if="selected.size" class="bulk" role="toolbar">
-        <strong>{{ tu('selected', { n: selected.size }) }}</strong>
-        <UiButton size="sm" variant="soft" :icon="Check" :loading="bulkBusy" @click="runBulk('approve')">{{ tu('approve') }}</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="X" :disabled="bulkBusy" @click="runBulk('reject')">{{ tu('decline') }}</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="Ban" :disabled="bulkBusy" @click="runBulk('suspend')">{{ tu('suspend') }}</UiButton>
-        <UiButton size="sm" variant="secondary" :icon="RotateCcw" :disabled="bulkBusy" @click="runBulk('reactivate')">
-          {{ tu('reactivate') }}
-        </UiButton>
-        <span class="bulk__plan">
+        <span class="bulk__count"><Check /> {{ tu('selected', { n: selected.size }) }}</span>
+        <div class="bulk__group">
+          <UiButton size="sm" variant="soft" :icon="Check" :loading="bulkBusy" @click="runBulk('approve')">{{ tu('approve') }}</UiButton>
+          <UiButton size="sm" variant="secondary" :icon="X" :disabled="bulkBusy" @click="runBulk('reject')">{{ tu('decline') }}</UiButton>
+          <UiButton size="sm" variant="secondary" :icon="Ban" :disabled="bulkBusy" @click="runBulk('suspend')">{{ tu('suspend') }}</UiButton>
+          <UiButton size="sm" variant="secondary" :icon="RotateCcw" :disabled="bulkBusy" @click="runBulk('reactivate')">
+            {{ tu('reactivate') }}
+          </UiButton>
+        </div>
+        <span class="bulk__sep" aria-hidden="true" />
+        <div class="bulk__group bulk__plan">
           <UiSelect
             v-model="bulkPlan"
             :options="[{ value: '', label: tu('changePlan') }, { value: 'default', label: tu('defaultPlan') }, ...plans.map((p) => ({ value: p.id, label: p.name }))]"
             :aria-label="tu('changePlan')"
           />
           <UiButton size="sm" variant="secondary" :icon="Crown" :disabled="!bulkPlan || bulkBusy" @click="runBulk('plan')">{{ tu('apply') }}</UiButton>
-        </span>
-        <UiButton size="sm" variant="danger" :icon="Trash2" :disabled="bulkBusy" @click="runBulk('delete')">{{ tu('delete') }}</UiButton>
-        <button type="button" class="bulk__clear" :aria-label="tu('clearSelection')" @click="selected = new Set()"><X /></button>
+        </div>
+        <div class="bulk__end">
+          <UiButton size="sm" variant="danger" :icon="Trash2" :disabled="bulkBusy" @click="runBulk('delete')">{{ tu('delete') }}</UiButton>
+          <button type="button" class="bulk__clear" :aria-label="tu('clearSelection')" :title="tu('clearSelection')" @click="selected = new Set()"><X /></button>
+        </div>
       </div>
     </Transition>
 
-    <div v-if="loading && !items.length" class="stack" style="--gap: 8px">
-      <UiSkeleton v-for="i in 6" :key="i" height="64px" />
+    <div v-if="loading && !items.length" class="ugrid">
+      <div v-for="i in 8" :key="i" class="ucard ucard--skeleton">
+        <div class="ucard__banner" />
+        <div class="ucard__body">
+          <UiSkeleton width="72px" height="72px" radius="50%" class="ucard__skel-avatar" />
+          <UiSkeleton width="60%" height="16px" />
+          <UiSkeleton width="80%" height="12px" />
+          <UiSkeleton width="100%" height="58px" radius="12px" class="ucard__skel-meta" />
+        </div>
+      </div>
     </div>
 
     <UiCard v-else-if="!items.length">
@@ -239,94 +307,122 @@ async function exportCsv() {
       />
     </UiCard>
 
-    <UiCard v-else :padded="false" class="table-card" :class="{ 'is-loading': loading }">
-      <div class="table" role="table">
-        <div class="row row--head" role="row">
-          <span role="columnheader" class="pick">
-            <input type="checkbox" :checked="allSelected" :aria-label="tu('selectAll')" @change="toggleAll" />
-          </span>
-          <span role="columnheader">{{ tu('col.member') }}</span>
-          <span role="columnheader">{{ tu('col.status') }}</span>
-          <span role="columnheader">{{ tu('col.plan') }}</span>
-          <span role="columnheader" class="hide-sm">{{ tu('col.activity') }}</span>
-          <span role="columnheader" class="hide-md">{{ tu('col.joined') }}</span>
-        </div>
-        <div
-          v-for="u in items"
-          :key="u.id"
-          class="row row--item"
-          :class="{ 'is-selected': selected.has(u.id) }"
-          role="row"
-          tabindex="0"
-          @click="open(u)"
-          @keydown.enter="open(u)"
-        >
-          <span class="pick" role="cell" @click.stop>
-            <input type="checkbox" :checked="selected.has(u.id)" :aria-label="tu('select', { name: u.name })" @change="toggle(u.id)" />
-          </span>
-          <span class="who" role="cell">
-            <UiAvatar :name="u.name" :src="u.avatarUrl" :size="38" :online="u.isOnline && !u.suspendedAt" />
-            <span class="who__text">
-              <strong class="truncate">
-                {{ u.name }}
-                <ShieldHalf v-if="u.role === 'admin'" class="who__admin" :aria-label="tu('badge.admin')" />
-              </strong>
-              <small class="truncate">
-                {{ u.email }}
-                <MailCheck v-if="u.emailVerifiedAt" class="who__verified" :aria-label="tu('emailConfirmed')" />
-              </small>
-            </span>
-          </span>
-          <span role="cell">
-            <UiBadge v-if="u.approvalStatus === 'pending'" tone="warning" :icon="Hourglass">{{ tu('badge.waiting') }}</UiBadge>
-            <UiBadge v-else-if="u.approvalStatus === 'rejected'" tone="neutral">{{ tu('badge.declined') }}</UiBadge>
-            <UiBadge v-else-if="u.suspendedAt" tone="danger" :icon="Ban">{{ tu('badge.suspended') }}</UiBadge>
-            <UiBadge v-else-if="u.role === 'admin'" tone="primary">{{ tu('badge.admin') }}</UiBadge>
-            <UiBadge v-else tone="success">{{ tu('badge.active') }}</UiBadge>
-          </span>
-          <span role="cell" class="plan">
-            <span v-if="u.role === 'admin'" class="subtle">{{ tu('fullAccess') }}</span>
-            <template v-else-if="u.plan">
-              <span class="plan__name"><Crown /> {{ u.plan.name }}</span>
-              <small v-if="u.planExpiresAt">{{ tu('until', { date: formatDate(u.planExpiresAt) }) }}</small>
-            </template>
-            <span v-else class="subtle">{{ tu('noPlan') }}</span>
-          </span>
-          <span role="cell" class="hide-sm activity">
-            <span>{{ tu('activity', { c: u.connectionCount, l: u.listingCount }) }}</span>
-            <small>{{ u.isOnline ? tu('onlineNow') : u.lastSeenAt ? tu('seen', { time: timeAgo(u.lastSeenAt) }) : tu('neverSignedIn') }}</small>
-          </span>
-          <span role="cell" class="hide-md subtle">{{ formatDate(u.createdAt) }}</span>
-        </div>
-      </div>
-    </UiCard>
+    <div v-else class="ugrid" :class="{ 'is-loading': loading }">
+      <article
+        v-for="u in items"
+        :key="u.id"
+        class="ucard"
+        :class="[`is-${statusOf(u)}`, { 'is-selected': selected.has(u.id) }]"
+        tabindex="0"
+        @click="open(u)"
+        @keydown.enter="open(u)"
+      >
+        <div class="ucard__banner" />
+        <label class="ucard__pick" :title="tu('select', { name: u.name })" @click.stop>
+          <input type="checkbox" :checked="selected.has(u.id)" :aria-label="tu('select', { name: u.name })" @change="toggle(u.id)" />
+        </label>
+        <span class="ucard__status">
+          <UiBadge v-if="statusOf(u) === 'pending'" tone="warning" :icon="Hourglass">{{ tu('badge.waiting') }}</UiBadge>
+          <UiBadge v-else-if="statusOf(u) === 'rejected'" tone="neutral">{{ tu('badge.declined') }}</UiBadge>
+          <UiBadge v-else-if="statusOf(u) === 'suspended'" tone="danger" :icon="Ban">{{ tu('badge.suspended') }}</UiBadge>
+          <UiBadge v-else-if="statusOf(u) === 'admin'" tone="primary" :icon="ShieldHalf">{{ tu('badge.admin') }}</UiBadge>
+          <UiBadge v-else tone="success">{{ tu('badge.active') }}</UiBadge>
+        </span>
 
-    <div v-if="pages > 1" class="pager">
+        <div class="ucard__body">
+          <UiAvatar class="ucard__avatar" :name="u.name" :src="u.avatarUrl" :size="72" :online="u.isOnline && !u.suspendedAt" ring />
+          <strong class="ucard__name" :title="u.name">
+            <span class="truncate">{{ u.name }}</span>
+          </strong>
+          <small class="ucard__email" :title="u.email">
+            <span class="truncate">{{ u.email }}</span>
+            <MailCheck v-if="u.emailVerifiedAt" class="ucard__verified" :aria-label="tu('emailConfirmed')" />
+          </small>
+          <span class="ucard__role truncate">{{ [u.roleTitle, u.city].filter(Boolean).join(' · ') || '—' }}</span>
+
+          <dl class="ucard__meta">
+            <div class="ucard__plan">
+              <dt>{{ tu('col.plan') }}</dt>
+              <dd v-if="u.role === 'admin'">{{ tu('fullAccess') }}</dd>
+              <dd v-else-if="u.plan" :title="u.planExpiresAt ? tu('until', { date: formatDate(u.planExpiresAt) }) : u.plan.name">
+                <Crown /> <span class="truncate">{{ u.plan.name }}</span>
+              </dd>
+              <dd v-else class="is-none">{{ tu('noPlan') }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('discover.connections') }}</dt>
+              <dd>{{ u.connectionCount }}</dd>
+            </div>
+            <div>
+              <dt>{{ t('admin.sections.listings') }}</dt>
+              <dd>{{ u.listingCount }}</dd>
+            </div>
+          </dl>
+          <p v-if="u.planExpiresAt && u.role !== 'admin'" class="ucard__until">{{ tu('until', { date: formatDate(u.planExpiresAt) }) }}</p>
+        </div>
+
+        <footer class="ucard__foot">
+          <span class="ucard__seen" :class="{ 'is-online': u.isOnline }">
+            <span class="ucard__dot" />
+            {{ u.isOnline ? tu('onlineNow') : u.lastSeenAt ? tu('seen', { time: timeAgo(u.lastSeenAt) }) : tu('neverSignedIn') }}
+          </span>
+          <span>{{ tu('col.joined') }} {{ formatDate(u.createdAt) }}</span>
+        </footer>
+      </article>
+    </div>
+
+    <nav v-if="pages > 1" class="pager" :aria-label="t('admin.pager.page', { page, pages })">
       <UiButton variant="secondary" size="sm" :icon="ChevronLeft" :disabled="page <= 1 || loading" @click="page--">
         {{ t('admin.pager.previous') }}
       </UiButton>
-      <span class="muted">{{ t('admin.pager.page', { page, pages }) }}</span>
+      <span class="pager__label">{{ t('admin.pager.page', { page, pages }) }}</span>
       <UiButton variant="secondary" size="sm" :icon-right="ChevronRight" :disabled="page >= pages || loading" @click="page++">
         {{ t('admin.pager.next') }}
       </UiButton>
-    </div>
+    </nav>
 
     <AdminUserSheet v-model:open="sheetOpen" :user-id="selectedId" :plans="plans" @saved="onSaved" @deleted="onDeleted" />
   </div>
 </template>
 
 <style scoped>
-.toolbar {
+.users {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- Filter panel ---------- */
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+}
+.filters__top {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
+  align-items: center;
+}
+.filters__selects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.filters__selects :deep(select) {
+  height: 44px;
 }
 .search {
   position: relative;
   display: flex;
   align-items: center;
 }
-.search svg {
+.search > svg {
   position: absolute;
   left: 14px;
   width: 18px;
@@ -337,200 +433,485 @@ async function exportCsv() {
 .search input {
   width: 100%;
   height: 44px;
-  padding: 0 14px 0 42px;
+  padding: 0 40px 0 42px;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--surface-2);
   font-size: 0.92rem;
+  transition: border-color 0.15s var(--ease), background-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
 }
 .search input:focus {
   outline: none;
   border-color: var(--primary);
+  background: var(--surface);
   box-shadow: var(--ring);
 }
+.search input::-webkit-search-cancel-button {
+  display: none;
+}
+.search__clear {
+  position: absolute;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+}
+.search__clear:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.search__clear svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Status chips */
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 -2px;
+  padding: 2px;
+}
+.chips::-webkit-scrollbar {
+  display: none;
+}
+.chip {
+  --dot: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+.chip:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  color: var(--text);
+}
+.chip.is-active {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+.chip__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot);
+}
+.chip.is-active .chip__dot {
+  background: #fff;
+}
+.chip--all .chip__dot {
+  --dot: var(--primary);
+}
+.chip--pending {
+  --dot: var(--warning);
+}
+.chip--active {
+  --dot: var(--success);
+}
+.chip--suspended {
+  --dot: var(--danger);
+}
+
+/* ---------- Results bar ---------- */
 .results {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  min-height: 36px;
 }
-.results strong {
+.results__count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+.results__count svg {
+  width: 17px;
+  height: 17px;
+  color: var(--primary);
+}
+.results__count strong {
   color: var(--text);
 }
+.results__export {
+  margin-left: auto;
+}
+.pick-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+}
+.pick-all:hover {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+}
+input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
+/* ---------- Bulk bar ---------- */
 .bulk {
   position: sticky;
   top: calc(var(--nav-h) + 8px);
-  z-index: 5;
+  z-index: 6;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   padding: 10px 12px;
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
-  background: var(--primary-soft);
-  box-shadow: var(--shadow-sm);
+  background: color-mix(in srgb, var(--surface) 88%, var(--primary));
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
 }
-.bulk > strong {
-  margin-right: 4px;
-  font-size: 0.88rem;
-}
-.bulk__plan {
+.bulk__count {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.bulk__count svg {
+  width: 15px;
+  height: 15px;
+}
+.bulk__group {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bulk__sep {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
 }
 .bulk__plan :deep(select) {
   height: 34px;
   min-width: 150px;
 }
+.bulk__end {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
 .bulk__clear {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
-  margin-left: auto;
+  width: 32px;
+  height: 32px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text-2);
 }
+.bulk__clear:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
 .bulk__clear svg {
   width: 16px;
   height: 16px;
 }
-.pick {
+
+/* ---------- Member cards ---------- */
+.ugrid {
   display: grid;
-  place-items: center;
-}
-.pick input {
-  width: 17px;
-  height: 17px;
-  accent-color: var(--primary);
-  cursor: pointer;
-}
-.row--item {
-  cursor: pointer;
-}
-.row--item.is-selected {
-  background: var(--primary-soft);
-}
-.who__verified {
-  display: inline;
-  width: 12px;
-  height: 12px;
-  margin-left: 4px;
-  vertical-align: -1px;
-  color: var(--success);
-}
-.table-card {
-  overflow: hidden;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+  gap: 16px;
   transition: opacity 0.2s;
 }
-.table-card.is-loading {
-  opacity: 0.6;
+.ugrid.is-loading {
+  opacity: 0.55;
+  pointer-events: none;
 }
-.row {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr);
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 10px 16px;
-  border: 0;
-  border-top: 1px solid var(--border);
-  background: transparent;
-  text-align: left;
-  font-size: 0.88rem;
-}
-.row--item:hover {
-  background: var(--surface-2);
-}
-.row--head {
-  border-top: 0;
-  background: var(--surface-2);
-  font-size: 0.74rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-3);
-}
-.who {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-.who__text {
+.ucard {
+  --tint: var(--primary);
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s var(--ease), border-color 0.2s var(--ease);
 }
-.who__text strong {
+.ucard.is-pending {
+  --tint: var(--warning);
+}
+.ucard.is-suspended {
+  --tint: var(--danger);
+}
+.ucard.is-rejected {
+  --tint: var(--text-3);
+}
+.ucard.is-active {
+  --tint: var(--success);
+}
+.ucard:not(.ucard--skeleton):hover,
+.ucard:focus-visible {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
+  outline: none;
+}
+.ucard.is-selected {
+  border-color: var(--primary);
+  box-shadow: var(--ring);
+}
+.ucard--skeleton {
+  cursor: default;
+}
+.ucard__banner {
+  height: 64px;
+  flex-shrink: 0;
+  background:
+    radial-gradient(120% 140% at 0% 0%, color-mix(in srgb, var(--tint) 26%, transparent), transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--primary) 14%, transparent), color-mix(in srgb, var(--accent) 10%, transparent));
+}
+.ucard__pick {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+}
+.ucard__status {
+  position: absolute;
+  top: 14px;
+  right: 12px;
+}
+.ucard__body {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 16px 14px;
+  margin-top: -38px;
+  text-align: center;
+  flex: 1;
 }
-.who__text small {
+.ucard__avatar,
+.ucard__skel-avatar {
+  margin-bottom: 8px;
+}
+.ucard--skeleton .ucard__body {
+  gap: 8px;
+  padding-bottom: 16px;
+}
+.ucard__skel-meta {
+  margin-top: 8px;
+}
+.ucard__name,
+.ucard__email {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  max-width: 100%;
+}
+.ucard__name {
+  font-size: 1rem;
+  font-weight: 700;
+}
+.ucard__email {
+  font-size: 0.78rem;
   color: var(--text-3);
 }
-.who__admin {
+.ucard__verified {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--success);
+}
+.ucard__role {
+  max-width: 100%;
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.ucard__meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+  width: 100%;
+  margin: 10px 0 0;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+}
+.ucard__meta > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 6px;
+}
+.ucard__meta > div + div {
+  border-left: 1px solid var(--border);
+}
+.ucard__meta dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ucard__meta dd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+.ucard__plan dd {
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.ucard__plan dd.is-none {
+  color: var(--text-3);
+  font-weight: 600;
+}
+.ucard__plan svg {
   width: 14px;
   height: 14px;
   flex-shrink: 0;
-  color: var(--primary);
+  color: var(--warning);
 }
-.plan,
-.activity {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-.plan small,
-.activity small {
+.ucard__until {
+  margin-top: 4px;
+  font-size: 0.72rem;
   color: var(--text-3);
-  font-size: 0.76rem;
 }
-.plan__name {
+.ucard__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+.ucard__seen {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+}
+.ucard__dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--text-3);
+  opacity: 0.5;
+}
+.ucard__seen.is-online {
+  color: var(--success);
   font-weight: 600;
 }
-.plan__name svg {
-  width: 14px;
-  height: 14px;
-  color: var(--warning);
+.ucard__seen.is-online .ucard__dot {
+  background: var(--success);
+  opacity: 1;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 22%, transparent);
 }
-.hide-sm,
-.hide-md {
-  display: none;
-}
+
+/* ---------- Pager ---------- */
 .pager {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 12px;
+  padding-top: 4px;
+}
+.pager__label {
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-@media (min-width: 760px) {
-  .toolbar {
-    grid-template-columns: minmax(0, 1fr) repeat(4, 160px);
-  }
-  .row {
-    grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr);
-  }
-  .hide-sm {
-    display: flex;
-    flex-direction: column;
+@media (min-width: 900px) {
+  .filters__top {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 520px);
   }
 }
-@media (min-width: 1100px) {
-  .row {
-    grid-template-columns: 28px minmax(0, 2.2fr) 110px minmax(0, 1.2fr) minmax(0, 1.4fr) 120px;
+@media (max-width: 559px) {
+  .filters__selects {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .hide-md {
-    display: block;
+  .filters__selects > :last-child {
+    grid-column: 1 / -1;
+  }
+  .pick-all__text {
+    display: none;
+  }
+  .bulk__sep {
+    display: none;
+  }
+  .bulk__end {
+    margin-left: 0;
   }
 }
 </style>
+

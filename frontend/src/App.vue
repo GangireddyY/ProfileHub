@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
 import { toast } from '@/composables/useToast';
 import UiToaster from '@/components/ui/UiToaster.vue';
+import UiDialogHost from '@/components/ui/UiDialogHost.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -29,6 +30,7 @@ onBeforeUnmount(() => window.removeEventListener('auth:expired', onSessionExpire
   </Transition>
   <RouterView />
   <UiToaster />
+  <UiDialogHost />
 </template>
 
 <style scoped>

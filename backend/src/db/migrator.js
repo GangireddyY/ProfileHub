@@ -9,6 +9,7 @@ import * as m006 from './migrations/006-default-plan-and-requests.js';
 import * as m007 from './migrations/007-plan-limits.js';
 import * as m008 from './migrations/008-sessions-approval-safety.js';
 import * as m009 from './migrations/009-email-chat-audit-reviews.js';
+import * as m010 from './migrations/010-standard-plans.js';
 
 /** Add new migrations to the end of this list; never edit one that has shipped. */
 const migrations = [
@@ -21,6 +22,7 @@ const migrations = [
   { name: '007-plan-limits', ...m007 },
   { name: '008-sessions-approval-safety', ...m008 },
   { name: '009-email-chat-audit-reviews', ...m009 },
+  { name: '010-standard-plans', ...m010 },
 ];
 
 export const migrator = new Umzug({

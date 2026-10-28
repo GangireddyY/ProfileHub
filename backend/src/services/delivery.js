@@ -4,6 +4,7 @@ import { CATEGORY_OF_TYPE, wants } from '../constants/notifyPrefs.js';
 import { sendEmail, appLink } from './mailer.js';
 import { sendPush } from './push.js';
 import { isUserConnected } from '../socket/emitter.js';
+import { limitsFor } from './entitlements.js';
 
 /**
  * Turns an in-app notification into the text used for email and push.
@@ -59,6 +60,14 @@ export function describeNotification({ type, actorName = 'Someone', data = {}, a
 
 const canEmail = (user) => Boolean(user?.email && user.emailVerifiedAt);
 
+/** Account and admin notices always go out; message, network and plan alerts are plan features. */
+const PLAN_GATED = new Set(['messages', 'network', 'plans']);
+async function planAllows(user, channel, category) {
+  if (!PLAN_GATED.has(category)) return true;
+  const limits = await limitsFor(user);
+  return channel === 'email' ? limits.emailAlerts : limits.pushAlerts;
+}
+
 /** Email + push for an in-app notification, following the recipient's preferences. Never throws. */
 export async function deliverNotification(notification, actor) {
   try {
@@ -76,12 +85,12 @@ export async function deliverNotification(notification, actor) {
     if (!text) return;
 
     const jobs = [];
-    if (wants(user, 'push', category)) {
+    if (wants(user, 'push', category) && (await planAllows(user, 'push', category))) {
       jobs.push(sendPush(user.id, { title: text.title, body: text.body, url: text.url, tag: `${notification.type}:${notification.entityId || notification.id}` }));
     }
     // "Approved" must reach people who can't sign in yet, so it skips the verified-address rule.
     const essential = notification.type === 'account_approved';
-    if (wants(user, 'email', category) && (canEmail(user) || essential)) {
+    if (wants(user, 'email', category) && (canEmail(user) || essential) && (await planAllows(user, 'email', category))) {
       jobs.push(
         sendEmail({
           to: user.email,
@@ -116,10 +125,10 @@ export async function deliverMessage(sender, message) {
     const receiver = await User.findByPk(message.receiverId);
     if (!receiver?.isActiveMember) return;
     const url = `/messages/${sender.id}`;
-    if (!isUserConnected(receiver.id) && wants(receiver, 'push', 'messages')) {
+    if (!isUserConnected(receiver.id) && wants(receiver, 'push', 'messages') && (await planAllows(receiver, 'push', 'messages'))) {
       await sendPush(receiver.id, { title: sender.name, body: preview(message), url, tag: `chat:${sender.id}` });
     }
-    if (!wants(receiver, 'email', 'messages') || !canEmail(receiver)) return;
+    if (!wants(receiver, 'email', 'messages') || !canEmail(receiver) || !(await planAllows(receiver, 'email', 'messages'))) return;
     const key = `${sender.id}:${receiver.id}`;
     const last = lastMessageEmail.get(key) || 0;
     if (Date.now() - last < EMAIL_GAP_MS) return;

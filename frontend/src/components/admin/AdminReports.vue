@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { Flag, Check, X, UserRound, Store, MessagesSquare, Inbox, Settings2, RotateCcw, Star, Trash2 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { toast } from '@/composables/useToast';
+import { dialog } from '@/composables/useDialog';
 import { timeAgo } from '@/utils/format';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
@@ -85,7 +86,15 @@ function onUserChanged() {
 }
 
 async function removeReview(r) {
-  const reason = window.prompt(tr('removeReviewPrompt'), r.details ? r.details.slice(0, 300) : '');
+  const reason = await dialog.prompt({
+    title: tr('removeReview'),
+    label: tr('removeReviewPrompt'),
+    initial: r.details ? r.details.slice(0, 300) : '',
+    multiline: true,
+    maxLength: 300,
+    confirmLabel: tr('removeReview'),
+    tone: 'danger',
+  });
   if (reason === null) return;
   try {
     await api.delete(`/admin/reviews/${r.targetId}`, { data: { reason } });

@@ -173,7 +173,7 @@ const statRows = computed(() =>
 </script>
 
 <template>
-  <UiSheet v-model:open="open" :title="user ? user.name : 'Account'" width="620px">
+  <UiSheet v-model:open="open" :title="user ? user.name : 'Account'" width="600px" side="right">
     <div v-if="loading || !user" class="center"><UiSpinner :size="26" /></div>
 
     <div v-else class="stack" style="--gap: 22px">
