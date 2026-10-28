@@ -472,7 +472,10 @@ async function deleteAccount() {
                 <span class="section__icon"><Contact /></span>
                 <div>
                   <h3 class="section-title">Contact details</h3>
-                  <p class="muted">Only you and your connections can see these. Leave a field empty to keep it private.</p>
+                  <p class="muted">
+                    Only you and your connections can see these. Leave a field empty to keep it private. See how we protect them in our
+                    <RouterLink to="/privacy#visibility" class="summary__link">Privacy policy</RouterLink>.
+                  </p>
                 </div>
               </header>
               <div class="form-grid form-grid--2">

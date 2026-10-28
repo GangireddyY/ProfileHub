@@ -142,7 +142,11 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
         </RouterView>
       </div>
 
-      <footer class="auth__foot">© {{ year }} ProfileHUB · Privacy-first networking</footer>
+      <footer class="auth__foot">
+        © {{ year }} ProfileHUB ·
+        <RouterLink to="/privacy">Privacy policy</RouterLink> ·
+        <RouterLink to="/terms">Terms &amp; guidelines</RouterLink>
+      </footer>
     </main>
   </div>
 </template>
@@ -673,6 +677,14 @@ const orbit = computed(() => ORBIT.map((o, i) => ({ ...getProfession(o.key), x: 
   text-align: center;
   font-size: 0.8rem;
   color: var(--text-3);
+}
+.auth__foot a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth__foot a:hover {
+  color: var(--primary);
 }
 
 /* Shared styling for the views rendered in this layout. */

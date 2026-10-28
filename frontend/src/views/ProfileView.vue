@@ -24,6 +24,7 @@ import {
   House,
   Lock,
   BadgeCheck,
+  ShieldAlert,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -351,6 +352,13 @@ async function share() {
                 <span class="details__icon"><House /></span>
                 <div class="details__text"><small>Address</small>{{ contact.address }}</div>
               </li>
+              <li v-if="!user.isMe" class="details__misuse">
+                <ShieldAlert />
+                <p>
+                  Use these details only to talk about work or a deal. Sharing them, adding people to lists or spamming breaks our
+                  <RouterLink to="/terms#misuse">guidelines</RouterLink> and can get accounts suspended.
+                </p>
+              </li>
             </template>
             <li v-else-if="user.isMe">
               <span class="details__icon"><Mail /></span>
@@ -598,6 +606,27 @@ a.stat:hover strong {
 }
 .details__locked {
   color: var(--text-3);
+}
+.details li.details__misuse {
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--text-2);
+}
+.details__misuse svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.details__misuse a {
+  color: var(--primary);
+  font-weight: 600;
 }
 .details__icon--rate {
   background: var(--success-soft);

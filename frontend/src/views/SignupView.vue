@@ -103,7 +103,13 @@ async function submit() {
 
     <UiButton type="submit" size="lg" block :loading="loading" :icon-right="ArrowRight">Create account</UiButton>
 
-    <p class="terms subtle">By signing up you agree to be respectful and keep your location opt-in.</p>
+    <p class="terms subtle">
+      By creating an account you agree to our
+      <RouterLink to="/terms" class="link" target="_blank">Terms &amp; community guidelines</RouterLink>
+      and
+      <RouterLink to="/privacy" class="link" target="_blank">Privacy policy</RouterLink>.
+      Misusing other members' profiles or contact details can get your account removed.
+    </p>
 
     <p class="switch">
       Already have an account? <RouterLink to="/login" class="link">Sign in</RouterLink>

@@ -104,6 +104,9 @@ const routes = [
       },
     ],
   },
+  // Readable whether or not you are signed in.
+  { path: '/privacy', name: 'privacy', component: () => import('@/views/PrivacyView.vue'), meta: { title: 'Privacy policy' } },
+  { path: '/terms', name: 'terms', component: () => import('@/views/TermsView.vue'), meta: { title: 'Terms & guidelines' } },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('@/views/NotFoundView.vue') },
 ];
 

@@ -17,6 +17,8 @@ import {
   ShieldHalf,
   Tag,
   Crown,
+  ShieldCheck,
+  FileText,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
@@ -171,6 +173,9 @@ function logout() {
             <RouterLink to="/plans" class="menu-item"><Crown /> Plans</RouterLink>
             <RouterLink to="/settings" class="menu-item"><Settings /> Settings & privacy</RouterLink>
             <RouterLink v-if="isAdmin" to="/admin" class="menu-item"><ShieldHalf /> Admin panel</RouterLink>
+            <div class="menu-sep" />
+            <RouterLink to="/terms#safety" class="menu-item"><ShieldCheck /> Safety &amp; guidelines</RouterLink>
+            <RouterLink to="/privacy" class="menu-item"><FileText /> Privacy policy</RouterLink>
             <div class="menu-sep" />
             <button type="button" class="menu-item menu-item--danger" @click="logout"><LogOut /> Sign out</button>
           </UiDropdown>

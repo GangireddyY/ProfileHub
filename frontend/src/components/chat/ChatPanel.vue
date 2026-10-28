@@ -1,6 +1,19 @@
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
-import { ArrowLeft, SendHorizontal, Check, CheckCheck, Clock3, CircleAlert, Lock, RotateCw, Trash2 } from 'lucide-vue-next';
+import {
+  ArrowLeft,
+  SendHorizontal,
+  Check,
+  CheckCheck,
+  Clock3,
+  CircleAlert,
+  Lock,
+  RotateCw,
+  Trash2,
+  ShieldAlert,
+  TriangleAlert,
+} from 'lucide-vue-next';
+import { SENSITIVE_PATTERN } from '@/constants/legal';
 import { useAuthStore } from '@/stores/auth';
 import { useChatStore } from '@/stores/chat';
 import { useRealtimeStore } from '@/stores/realtime';
@@ -24,6 +37,7 @@ const realtime = useRealtimeStore();
 const scroller = ref(null);
 const input = ref(null);
 const draft = ref('');
+const draftLooksSensitive = computed(() => SENSITIVE_PATTERN.test(draft.value));
 const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
 
 const t = computed(() => chat.threads[props.userId]);
@@ -185,6 +199,15 @@ onBeforeUnmount(() => {
       <template v-else>
         <div v-if="t?.loadingOlder" class="chat__older"><UiSpinner :size="20" /></div>
 
+        <div v-if="t?.loaded && !t.hasMore" class="safety-note" role="note">
+          <ShieldAlert />
+          <p>
+            <strong>Stay safe.</strong> Never share OTPs, passwords, UPI PINs or bank details, and don't pay in advance to someone
+            you haven't met. Harassment, spam and misusing contact details break our guidelines.
+            <RouterLink to="/terms#safety">Safety tips</RouterLink>
+          </p>
+        </div>
+
         <div v-if="t?.loaded && !t.messages.length" class="chat__intro">
           <UiAvatar :name="other?.name" :src="other?.avatarUrl" :size="72" />
           <strong>{{ other?.name }}</strong>
@@ -211,6 +234,9 @@ onBeforeUnmount(() => {
                 </template>
               </span>
             </div>
+            <p v-if="!row.mine && SENSITIVE_PATTERN.test(row.m.body)" class="msg__warn">
+              <TriangleAlert /> Never share OTPs, passwords, PINs or bank details. ProfileHUB will never ask for them.
+            </p>
             <div v-if="row.m.failed" class="msg__failed">
               <span>{{ row.m.error || 'Not sent' }}</span>
               <button type="button" @click="chat.retry(userId, row.m.id)"><RotateCw /> Retry</button>
@@ -233,23 +259,29 @@ onBeforeUnmount(() => {
       <UiButton :to="`/u/${userId}`" size="sm" variant="soft">View profile</UiButton>
     </div>
 
-    <form v-else class="composer" @submit.prevent="send">
-      <textarea
-        ref="input"
-        v-model="draft"
-        rows="1"
-        maxlength="2000"
-        placeholder="Write a message…"
-        aria-label="Message"
-        enterkeyhint="send"
-        :disabled="!t?.loaded"
-        @input="onInput"
-        @keydown="onKeydown"
-      />
-      <button type="submit" class="composer__send" :disabled="!draft.trim()" aria-label="Send message">
-        <SendHorizontal />
-      </button>
-    </form>
+    <template v-else>
+      <p v-if="draftLooksSensitive" class="composer__warn" role="alert">
+        <TriangleAlert />
+        Careful: never send OTPs, passwords, PINs, card or bank details in chat, even to people you trust.
+      </p>
+      <form class="composer" @submit.prevent="send">
+        <textarea
+          ref="input"
+          v-model="draft"
+          rows="1"
+          maxlength="2000"
+          placeholder="Write a message…"
+          aria-label="Message"
+          enterkeyhint="send"
+          :disabled="!t?.loaded"
+          @input="onInput"
+          @keydown="onKeydown"
+        />
+        <button type="submit" class="composer__send" :disabled="!draft.trim()" aria-label="Send message">
+          <SendHorizontal />
+        </button>
+      </form>
+    </template>
   </div>
 </template>
 
@@ -311,6 +343,65 @@ onBeforeUnmount(() => {
 }
 .chat__center {
   flex: 1;
+}
+.safety-note {
+  display: flex;
+  gap: 10px;
+  align-self: center;
+  max-width: 560px;
+  margin: 4px auto 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+  background: var(--warning-soft);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.safety-note > svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.safety-note strong {
+  color: var(--text);
+}
+.safety-note a {
+  color: var(--primary);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.msg__warn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(78%, 560px);
+  margin-top: 4px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+.msg__warn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.composer__warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--danger) 30%, var(--border));
+  background: var(--danger-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+.composer__warn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 .chat__intro {
   margin: auto;

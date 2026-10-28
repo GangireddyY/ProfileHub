@@ -249,7 +249,13 @@ function onKey(e) {
               <UiButton size="lg" block :icon="MessageCircle" :disabled="listing.status !== 'active'" @click="messageSeller">
                 Message seller
               </UiButton>
-              <p class="safety"><ShieldCheck /> Meet in a public place and check the item before you pay.</p>
+              <p class="safety">
+                <ShieldCheck />
+                <span>
+                  Meet in a public place, check the item before you pay and never share OTPs or your UPI PIN.
+                  <RouterLink to="/terms#safety">Safety tips</RouterLink>
+                </span>
+              </p>
             </template>
           </UiCard>
 
@@ -516,6 +522,10 @@ function onKey(e) {
   flex-shrink: 0;
   margin-top: 1px;
   color: var(--success);
+}
+.safety a {
+  color: var(--primary);
+  font-weight: 600;
 }
 .seller {
   display: flex;
