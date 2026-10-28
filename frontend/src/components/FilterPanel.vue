@@ -99,12 +99,12 @@ const formatDistance = (i) => (DISTANCE_STEPS[i] == null ? 'Any distance' : `Wit
 .filters {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 16px;
 }
 .filters__section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .filters__title {
   display: flex;

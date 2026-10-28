@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   Search,
@@ -24,7 +24,6 @@ import { formatRate, formatMoney } from '@/utils/format';
 import { DISTANCE_STEPS, DEFAULT_FILTERS, stepForRadius } from '@/constants/filters';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiButton from '@/components/ui/UiButton.vue';
-import UiChip from '@/components/ui/UiChip.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
@@ -32,6 +31,7 @@ import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiSpinner from '@/components/ui/UiSpinner.vue';
 import ProfileCard from '@/components/ProfileCard.vue';
 import FilterPanel from '@/components/FilterPanel.vue';
+import UiSearchSelect from '@/components/ui/UiSearchSelect.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 
 const STORAGE_KEY = 'ph_filters';
@@ -85,6 +85,34 @@ const activeFilterCount = computed(
     (filters.value.sort !== 'recommended' ? 1 : 0),
 );
 const pickedProfessions = computed(() => filters.value.professions.map((key) => getProfession(key)));
+const pickedCategories = computed(() => filters.value.categories.map((key) => professions.category(key)));
+
+const categoryFilter = computed({
+  get: () => ({ categories: filters.value.categories, professions: filters.value.professions }),
+  set: ({ categories, professions: picked }) => {
+    filters.value.categories = categories;
+    filters.value.professions = picked;
+  },
+});
+const categoryGroups = computed(() => {
+  const active = professions.list.filter((p) => p.active !== false);
+  const perCategory = new Map();
+  for (const p of active) perCategory.set(p.category, (perCategory.get(p.category) || 0) + 1);
+  return [
+    {
+      key: 'categories',
+      title: 'Categories',
+      options: professions.categories.map((c) => ({ ...c, meta: perCategory.get(c.key) || 0 })),
+    },
+    {
+      key: 'professions',
+      title: 'Professions',
+      searchOnly: true,
+      limit: 40,
+      options: active.map((p) => ({ ...p, meta: professions.category(p.category).label })),
+    },
+  ];
+});
 const myRate = computed(() => formatRate(me.value));
 const profileIncomplete = computed(() => me.value?.profession === 'other' && !me.value?.roleTitle);
 const greeting = computed(() => {
@@ -128,8 +156,17 @@ async function load({ append = false } = {}) {
     if (id === requestId) {
       loading.value = false;
       loadingMore.value = false;
+      nextTick(maybeLoadMore);
     }
   }
+}
+
+const PRELOAD_PX = 400;
+
+/** The observer only fires on changes, so on tall screens the sentinel can stay in view after a page loads. */
+function maybeLoadMore() {
+  if (error.value || loading.value || loadingMore.value || page.value >= pages.value || !sentinel.value) return;
+  if (sentinel.value.getBoundingClientRect().top < window.innerHeight + PRELOAD_PX) load({ append: true });
 }
 
 let debounce;
@@ -150,9 +187,8 @@ watch(
   },
 );
 
-function toggleCategory(key) {
-  const list = filters.value.categories;
-  filters.value.categories = list.includes(key) ? list.filter((c) => c !== key) : [...list, key];
+function removeCategory(key) {
+  filters.value.categories = filters.value.categories.filter((c) => c !== key);
 }
 
 function removeProfession(key) {
@@ -185,11 +221,9 @@ onMounted(() => {
   load();
   observer = new IntersectionObserver(
     (entries) => {
-      if (entries[0].isIntersecting && !loading.value && !loadingMore.value && page.value < pages.value) {
-        load({ append: true });
-      }
+      if (entries[0].isIntersecting) maybeLoadMore();
     },
-    { rootMargin: '400px' },
+    { rootMargin: `${PRELOAD_PX}px` },
   );
   if (sentinel.value) observer.observe(sentinel.value);
 });
@@ -200,12 +234,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="container discover">
-    <aside class="discover__side">
+  <div class="container page-layout discover">
+    <aside class="page-aside page-aside--sticky discover__side">
       <UiCard :padded="false" class="mini" :style="{ '--hue': myHue }">
         <div class="mini__cover" />
         <RouterLink :to="`/u/${me.id}`" class="mini__body">
-          <UiAvatar :name="me.name" :src="me.avatarUrl" :size="68" ring class="mini__avatar" />
+          <UiAvatar :name="me.name" :src="me.avatarUrl" :size="56" ring class="mini__avatar" />
           <strong class="mini__name">{{ me.name }}</strong>
           <span class="muted mini__role">{{ me.roleTitle || 'Add your role in settings' }}</span>
           <ProfessionBadge :profession="me.profession" size="sm" />
@@ -246,7 +280,7 @@ onBeforeUnmount(() => {
         <h1 class="page-title">Discover people &amp; services</h1>
       </header>
 
-      <div class="searchbar">
+      <div class="page-toolbar">
         <label class="searchbar__field">
           <Search class="searchbar__icon" />
           <input
@@ -260,6 +294,12 @@ onBeforeUnmount(() => {
             <X />
           </button>
         </label>
+        <UiSearchSelect
+          v-model="categoryFilter"
+          :groups="categoryGroups"
+          all-label="All categories"
+          placeholder="Search categories or professions"
+        />
         <button type="button" class="filter-btn" aria-label="Open filters" @click="filtersOpen = true">
           <SlidersHorizontal />
           <span class="filter-btn__text">Filters</span>
@@ -267,21 +307,21 @@ onBeforeUnmount(() => {
         </button>
       </div>
 
-      <div class="scroll-x chips" role="group" aria-label="Filter by category">
-        <UiChip :active="!filters.categories.length" @click="filters.categories = []">All</UiChip>
-        <UiChip
-          v-for="c in professions.categories"
+      <div
+        v-if="pickedCategories.length || pickedProfessions.length || filters.maxRate != null || filters.availableOnly"
+        class="active-filters"
+      >
+        <button
+          v-for="c in pickedCategories"
           :key="c.key"
-          :icon="c.icon"
-          :hue="c.hue"
-          :active="filters.categories.includes(c.key)"
-          @click="toggleCategory(c.key)"
+          type="button"
+          class="active-filter"
+          :style="{ '--hue': c.hue }"
+          :aria-label="`Remove ${c.label} filter`"
+          @click="removeCategory(c.key)"
         >
-          {{ c.label }}
-        </UiChip>
-      </div>
-
-      <div v-if="pickedProfessions.length || filters.maxRate != null || filters.availableOnly" class="active-filters">
+          <component :is="c.icon" /> {{ c.label }} <X class="active-filter__x" />
+        </button>
         <button
           v-for="p in pickedProfessions"
           :key="p.key"
@@ -385,12 +425,6 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.discover {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 24px;
-  align-items: start;
-}
 .discover__side {
   display: none;
 }
@@ -406,10 +440,6 @@ onBeforeUnmount(() => {
   font-size: 0.92rem;
 }
 
-.searchbar {
-  display: flex;
-  gap: 10px;
-}
 .searchbar__field {
   flex: 1;
   position: relative;
@@ -492,12 +522,6 @@ onBeforeUnmount(() => {
   background: var(--primary);
   color: #fff;
   font-size: 0.72rem;
-}
-
-.chips {
-  padding-bottom: 2px;
-  margin-inline: calc(-1 * var(--page-pad));
-  padding-inline: var(--page-pad);
 }
 
 .setup-banner {
@@ -649,7 +673,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 .mini__cover {
-  height: 64px;
+  height: 44px;
   background: linear-gradient(135deg, hsl(var(--hue) 75% 60%), hsl(calc(var(--hue) + 40) 70% 55%));
 }
 .mini__body {
@@ -657,33 +681,37 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 6px;
-  padding: 0 16px 16px;
+  gap: 4px;
+  padding: 0 14px 12px;
 }
 .mini__avatar {
-  margin-top: -34px;
+  margin-top: -28px;
 }
 .mini__name {
-  font-size: 1.05rem;
+  font-size: 1rem;
 }
 .mini__body:hover .mini__name {
   color: var(--primary);
 }
 .mini__role {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
 }
 .mini__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
   border-top: 1px solid var(--border);
   padding: 6px;
 }
 .mini__stat {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 9px 10px;
-  border-radius: 10px;
-  font-size: 0.86rem;
-  color: var(--text-2);
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  color: var(--text-3);
 }
 .mini__stat:hover {
   background: var(--surface-2);
@@ -691,24 +719,24 @@ onBeforeUnmount(() => {
 .mini__stat span {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .mini__stat svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 .mini__stat strong {
+  font-size: 0.9rem;
   color: var(--primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .mini__stat strong.hot {
   color: var(--danger);
 }
 .mini__stat strong.ok {
   color: var(--success);
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .mini__stat strong.off {
   color: var(--text-3);
@@ -733,22 +761,11 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1024px) {
-  .discover {
-    grid-template-columns: var(--aside-w) minmax(0, 1fr);
-  }
-  .chips {
-    margin-inline: 0;
-    padding-inline: 0;
-  }
   .discover__side {
     display: flex;
-    flex-direction: column;
-    gap: 16px;
-    position: sticky;
-    top: calc(var(--nav-h) + 24px);
-    max-height: calc(100dvh - var(--nav-h) - 48px);
-    overflow-y: auto;
-    scrollbar-width: thin;
+  }
+  .discover__side .side-filters {
+    padding: 16px;
   }
   .filter-btn {
     display: none;

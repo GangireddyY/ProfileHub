@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed } from 'vue';
+import { ref, reactive, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   Check,
@@ -13,6 +13,7 @@ import {
   Sparkles,
   PartyPopper,
   Award,
+  LocateFixed,
 } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -28,6 +29,8 @@ import UiAvatar from '@/components/ui/UiAvatar.vue';
 import ProfessionPicker from '@/components/ProfessionPicker.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import AvatarUploader from '@/components/profile/AvatarUploader.vue';
+import LocationCard from '@/components/LocationCard.vue';
+import { useGeolocation } from '@/composables/useGeolocation';
 import { markOnboarded } from '@/utils/onboarding';
 
 const auth = useAuthStore();
@@ -75,6 +78,21 @@ async function requestProfession(payload) {
   form.profession = '';
   toast.success(`We'll notify you when an admin adds “${payload.label}”.`, { title: 'Request sent' });
 }
+
+const geo = useGeolocation();
+
+async function shareLocation() {
+  if (await geo.locate()) toast.success(me.value.city ? `Location set near ${me.value.city}` : 'Location enabled');
+  else toast.error(geo.error.value);
+}
+
+// Sharing or updating the location sets the profile city; keep the field in step with it.
+watch(
+  () => me.value.city,
+  (city) => {
+    if (city) form.city = city;
+  },
+);
 
 function finishLater() {
   markOnboarded(me.value);
@@ -238,6 +256,22 @@ function goTo(n) {
               />
             </div>
 
+            <LocationCard v-if="me.hasLocation" />
+            <div v-else class="box">
+              <div class="locate">
+                <span class="locate__icon"><LocateFixed /></span>
+                <div class="grow">
+                  <strong>Share your location</strong>
+                  <p class="muted">
+                    We'll fill in your city and show people how far away you are. Your exact location is never shown to
+                    others.
+                  </p>
+                </div>
+                <UiButton :icon="LocateFixed" :loading="geo.loading.value" @click="shareLocation">Use my current location</UiButton>
+              </div>
+              <p v-if="geo.error.value" class="locate__error">{{ geo.error.value }}</p>
+            </div>
+
             <div class="box">
               <UiToggle
                 v-model="form.availableForWork"
@@ -373,7 +407,7 @@ function goTo(n) {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 28px;
-  max-width: 1120px;
+  max-width: var(--content-max);
   margin: 0 auto;
   padding: 28px var(--page-pad) 40px;
 }
@@ -590,6 +624,33 @@ function goTo(n) {
   border-radius: 18px;
   border: 1px solid var(--border);
   background: var(--surface-2);
+}
+.locate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 14px;
+}
+.locate p {
+  font-size: 0.86rem;
+}
+.locate__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.locate__icon svg {
+  width: 20px;
+  height: 20px;
+}
+.locate__error {
+  color: var(--danger);
+  font-size: 0.86rem;
 }
 .box :deep(.field__input) {
   background: var(--surface);

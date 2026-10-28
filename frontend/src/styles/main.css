@@ -209,6 +209,20 @@ img {
   margin-top: 2px;
 }
 
+/* Search and filter row that stays pinned under the top bar while results scroll. */
+.page-toolbar {
+  position: sticky;
+  top: var(--nav-h);
+  z-index: 20;
+  display: flex;
+  gap: 10px;
+  margin: -10px calc(-1 * var(--page-pad));
+  padding: 10px var(--page-pad);
+  background-color: var(--bg);
+  background-image: var(--bg-accent);
+  background-attachment: fixed;
+}
+
 @media (min-width: 1024px) {
   .page-layout {
     grid-template-columns: var(--aside-w) minmax(0, 1fr);
@@ -216,12 +230,31 @@ img {
   .page-layout--aside-right {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
+  /* The side menu is pinned below the top bar; only the main column scrolls with the page. */
+  .page-layout:has(> .page-aside--sticky) {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: calc(var(--aside-w) + 3 * var(--page-pad));
+  }
   .page-aside--sticky {
-    position: sticky;
-    top: calc(var(--nav-h) + 24px);
-    max-height: calc(100dvh - var(--nav-h) - 48px);
+    position: fixed;
+    top: var(--nav-h);
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    width: calc(var(--aside-w) + 2 * var(--page-pad));
+    padding: 16px var(--page-pad);
+    gap: 12px;
+    background: var(--surface-2);
+    border-right: 1px solid var(--border);
     overflow-y: auto;
-    scrollbar-width: thin;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .page-aside--sticky::-webkit-scrollbar {
+    display: none;
+  }
+  .page-aside--sticky > * {
+    flex-shrink: 0;
   }
 }
 
@@ -310,13 +343,13 @@ img {
   opacity: 0;
 }
 
+/* Opacity only: a transform here would make the pinned side menu jump while a page fades in. */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  transition: opacity 0.18s var(--ease);
 }
 .page-enter-from {
   opacity: 0;
-  transform: translateY(6px);
 }
 .page-leave-to {
   opacity: 0;

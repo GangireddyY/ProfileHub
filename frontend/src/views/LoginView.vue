@@ -1,7 +1,7 @@
 <script setup>
-import { reactive, ref } from 'vue';
+import { reactive, ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-vue-next';
+import { Mail, Lock, ArrowRight, Sparkles, ShieldHalf } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { errorMessage, fieldErrors } from '@/api/http';
 import { needsOnboarding } from '@/utils/onboarding';
@@ -16,6 +16,7 @@ const form = reactive({ email: '', password: '' });
 const errors = ref({});
 const formError = ref('');
 const loading = ref(false);
+const switching = computed(() => Boolean(route.query.switch) && auth.isAuthed);
 
 async function submit() {
   errors.value = {};
@@ -50,6 +51,18 @@ function useDemo() {
       <h1 class="auth-title">Welcome back</h1>
       <p class="muted">Sign in to see who's around and catch up with your network.</p>
     </header>
+
+    <div v-if="switching" class="switch-note" role="status">
+      <ShieldHalf />
+      <div class="grow">
+        <strong>{{ route.query.switch === 'admin' ? 'The admin panel needs an admin account' : 'Sign in with another account' }}</strong>
+        <p>
+          You're signed in as <b>{{ auth.user.name }}</b>. Signing in here switches only this tab; your other tabs stay
+          signed in.
+        </p>
+        <RouterLink to="/" class="link">Back to ProfileHUB as {{ auth.user.name.split(' ')[0] }}</RouterLink>
+      </div>
+    </div>
 
     <Transition name="fade">
       <p v-if="formError" class="form-alert" role="alert">{{ formError }}</p>
@@ -98,6 +111,25 @@ function useDemo() {
 </template>
 
 <style scoped>
+.switch-note {
+  display: flex;
+  gap: 12px;
+  padding: 14px;
+  border-radius: var(--radius);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+  font-size: 0.86rem;
+}
+.switch-note > svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--warning);
+}
+.switch-note p {
+  margin: 2px 0 6px;
+  color: var(--text-2);
+}
 .divider {
   display: flex;
   align-items: center;

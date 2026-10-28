@@ -19,6 +19,10 @@ import {
   Store,
   Plus,
   MessageCircle,
+  Mail,
+  Phone,
+  House,
+  Lock,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -40,6 +44,7 @@ import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
 import ExperienceTimeline from '@/components/profile/ExperienceTimeline.vue';
 import ExperienceEditor from '@/components/profile/ExperienceEditor.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const props = defineProps({ id: { type: String, required: true } });
 
@@ -68,6 +73,15 @@ const online = computed(() =>
   user.value?.isMe ? realtime.connected && user.value.showOnlineStatus : realtime.isOnline(user.value?.id, user.value?.online),
 );
 const lastSeen = computed(() => realtime.lastSeen(user.value?.id, user.value?.lastSeenAt));
+/** Own profile carries the fields directly; others only include `contact` when we're connected. */
+const contact = computed(() => {
+  const source = user.value?.isMe ? user.value : user.value?.contact;
+  if (!source) return null;
+  const { contactEmail = '', phone = '', address = '' } = source;
+  return contactEmail || phone || address ? { email: contactEmail, phone, address } : null;
+});
+const telHref = (phone) => `tel:${phone.replace(/[\s-]/g, '')}`;
+
 const memberSince = computed(() =>
   user.value ? new Date(user.value.createdAt).toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) : '',
 );
@@ -106,6 +120,7 @@ async function removeConnection() {
   try {
     await api.delete(`/connections/${user.value.id}`);
     user.value.connectionStatus = 'none';
+    user.value.contact = null;
     user.value.connectionCount = Math.max(0, user.value.connectionCount - 1);
     confirmRemove.value = false;
     toast.success(`${user.value.name} was removed from your network`);
@@ -134,6 +149,7 @@ async function share() {
 
 <template>
   <div class="container profile">
+    <BackButton />
     <template v-if="loading">
       <UiCard :padded="false" class="overflow-hidden">
         <UiSkeleton height="180px" radius="0" />
@@ -319,6 +335,28 @@ async function share() {
             <li v-if="user.city">
               <span class="details__icon"><MapPin /></span>
               <div><small>Location</small>{{ user.city }}</div>
+            </li>
+            <template v-if="contact">
+              <li v-if="contact.email">
+                <span class="details__icon"><Mail /></span>
+                <div class="details__text"><small>Email</small><a :href="`mailto:${contact.email}`">{{ contact.email }}</a></div>
+              </li>
+              <li v-if="contact.phone">
+                <span class="details__icon"><Phone /></span>
+                <div class="details__text"><small>Mobile</small><a :href="telHref(contact.phone)">{{ contact.phone }}</a></div>
+              </li>
+              <li v-if="contact.address">
+                <span class="details__icon"><House /></span>
+                <div class="details__text"><small>Address</small>{{ contact.address }}</div>
+              </li>
+            </template>
+            <li v-else-if="user.isMe">
+              <span class="details__icon"><Mail /></span>
+              <div><small>Contact details</small><RouterLink to="/settings#contact" class="details__link">Add email, mobile & address</RouterLink></div>
+            </li>
+            <li v-else-if="user.connectionStatus !== 'connected'" class="details__locked">
+              <span class="details__icon"><Lock /></span>
+              <div><small>Contact details</small>Shared with connections only</div>
             </li>
             <li>
               <span class="details__icon"><Users /></span>
@@ -543,6 +581,21 @@ a.stat:hover strong {
 .details__icon svg {
   width: 18px;
   height: 18px;
+}
+.details__text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.details__text a,
+.details__link {
+  color: var(--primary);
+}
+.details__text a:hover,
+.details__link:hover {
+  text-decoration: underline;
+}
+.details__locked {
+  color: var(--text-3);
 }
 .details__icon--rate {
   background: var(--success-soft);

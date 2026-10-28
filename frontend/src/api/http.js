@@ -1,6 +1,29 @@
 import axios from 'axios';
 
-export const TOKEN_KEY = 'ph_token';
+const TOKEN_KEY = 'ph_token';
+
+/*
+ * Each tab keeps its own session in sessionStorage, so signing in as someone else in one tab (e.g. an admin)
+ * never switches the account of the others. localStorage only remembers the latest sign-in, which a newly
+ * opened tab adopts once when it loads.
+ */
+if (!sessionStorage.getItem(TOKEN_KEY)) {
+  const latest = localStorage.getItem(TOKEN_KEY);
+  if (latest) sessionStorage.setItem(TOKEN_KEY, latest);
+}
+
+export const getToken = () => sessionStorage.getItem(TOKEN_KEY);
+
+export function saveToken(token) {
+  sessionStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearToken() {
+  const token = getToken();
+  sessionStorage.removeItem(TOKEN_KEY);
+  if (localStorage.getItem(TOKEN_KEY) === token) localStorage.removeItem(TOKEN_KEY);
+}
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
@@ -8,7 +31,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem(TOKEN_KEY);
+  const token = getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });

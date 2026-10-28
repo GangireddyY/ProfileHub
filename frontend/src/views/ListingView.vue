@@ -16,7 +16,6 @@ import {
   Trash2,
   Share2,
   PackageX,
-  ArrowLeft,
   ShieldCheck,
 } from 'lucide-vue-next';
 import { api, errorMessage } from '@/api/http';
@@ -33,6 +32,7 @@ import UiSheet from '@/components/ui/UiSheet.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
 import ListingCard from '@/components/market/ListingCard.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const props = defineProps({ id: { type: String, required: true } });
 const router = useRouter();
@@ -124,7 +124,7 @@ function onKey(e) {
 
 <template>
   <div class="container listing-page">
-    <UiButton to="/market" variant="ghost" size="sm" :icon="ArrowLeft" class="back">Marketplace</UiButton>
+    <BackButton fallback="/market" />
 
     <div v-if="loading" class="layout">
       <UiSkeleton height="auto" radius="20px" style="aspect-ratio: 4 / 3" />
@@ -302,10 +302,6 @@ function onKey(e) {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-.back {
-  align-self: flex-start;
-  margin-left: -8px;
 }
 .layout {
   display: grid;

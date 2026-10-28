@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onBeforeUnmount } from 'vue';
 import { useRouter } from 'vue-router';
-import { ImagePlus, X, Star, ArrowLeft, Send, Save, Camera, PackageX } from 'lucide-vue-next';
+import { ImagePlus, X, Star, Send, Save, Camera, PackageX } from 'lucide-vue-next';
 import { api, errorMessage, fieldErrors } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 import { toast } from '@/composables/useToast';
@@ -16,6 +16,7 @@ import UiToggle from '@/components/ui/UiToggle.vue';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSpinner from '@/components/ui/UiSpinner.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const props = defineProps({ id: { type: String, default: '' } });
 const MAX_BYTES = 8 * 1024 * 1024;
@@ -149,7 +150,10 @@ async function submit() {
       ? await api.put(`/listings/${props.id}`, body, config)
       : await api.post('/listings', body, config);
     toast.success(isEdit.value ? 'Listing updated' : 'Your listing is live!');
-    router.replace(`/market/${data.listing.id}`);
+    // Opened from the listing: step back to it so Back from there doesn't land on the listing again.
+    const listingPath = `/market/${data.listing.id}`;
+    if (router.options.history.state.back === listingPath) router.back();
+    else router.replace(listingPath);
   } catch (err) {
     errors.value = fieldErrors(err);
     formError.value = errorMessage(err);
@@ -163,9 +167,7 @@ onBeforeUnmount(() => photos.value.forEach((p) => p.file && URL.revokeObjectURL(
 
 <template>
   <div class="container editor">
-    <UiButton :to="isEdit ? `/market/${id}` : '/market'" variant="ghost" size="sm" :icon="ArrowLeft" class="back">
-      {{ isEdit ? 'Back to listing' : 'Marketplace' }}
-    </UiButton>
+    <BackButton :fallback="isEdit ? `/market/${id}` : '/market'" />
 
     <header class="page-head">
       <div>
@@ -316,10 +318,6 @@ onBeforeUnmount(() => photos.value.forEach((p) => p.file && URL.revokeObjectURL(
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-.back {
-  align-self: flex-start;
-  margin-left: -8px;
 }
 .center {
   display: grid;

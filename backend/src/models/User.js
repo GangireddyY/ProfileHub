@@ -45,6 +45,10 @@ export class User extends Model {
       createdAt: this.createdAt,
     };
   }
+
+  toContact() {
+    return { contactEmail: this.contactEmail, phone: this.phone, address: this.address };
+  }
 }
 
 User.init(
@@ -77,9 +81,16 @@ User.init(
     city: { type: DataTypes.STRING(100), allowNull: false, defaultValue: '' },
     avatarUrl: { type: DataTypes.STRING(500), allowNull: false, defaultValue: '' },
 
+    /** Contact details: visible to the owner and their connections only. */
+    contactEmail: { type: DataTypes.STRING(160), allowNull: false, defaultValue: '' },
+    phone: { type: DataTypes.STRING(20), allowNull: false, defaultValue: '' },
+    address: { type: DataTypes.STRING(300), allowNull: false, defaultValue: '' },
+
     latitude: { type: DataTypes.DOUBLE, allowNull: true },
     longitude: { type: DataTypes.DOUBLE, allowNull: true },
     locationUpdatedAt: { type: DataTypes.DATE, allowNull: true },
+    /** Reverse-geocoded address of the shared position (area, city, state, PIN, accuracy). Owner only. */
+    locationDetails: { type: DataTypes.JSON, allowNull: true },
 
     shareLocation: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
     showOnlineStatus: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },

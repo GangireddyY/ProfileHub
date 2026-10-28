@@ -14,6 +14,7 @@ import UiInput from '@/components/ui/UiInput.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UserRow from '@/components/UserRow.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const auth = useAuthStore();
 const realtime = useRealtimeStore();
@@ -124,6 +125,7 @@ watch(() => realtime.networkVersion, () => load({ silent: true }));
     </aside>
 
     <section class="page-main">
+      <BackButton />
       <header class="page-head">
         <div>
           <h1 class="page-title">{{ titles[tab][0] }}</h1>

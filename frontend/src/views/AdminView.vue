@@ -33,6 +33,7 @@ import UiSelect from '@/components/ui/UiSelect.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
 import ProfessionForm from '@/components/admin/ProfessionForm.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const store = useProfessionsStore();
 
@@ -242,6 +243,7 @@ onMounted(() => {
 
 <template>
   <div class="container admin">
+    <BackButton />
     <header class="page-head">
       <div class="row" style="--gap: 14px">
         <span class="head-icon"><ShieldHalf /></span>

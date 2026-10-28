@@ -17,6 +17,10 @@ const props = defineProps({ userId: { type: String, default: '' } });
 const router = useRouter();
 const route = useRoute();
 
+// This view stays mounted while switching conversations, so this is the page before Messages was opened.
+const previous = router.options.history.state.back;
+const backTo = typeof previous === 'string' && !previous.startsWith('/messages') ? previous : '/';
+
 const newChatOpen = ref(false);
 const connections = ref([]);
 const loadingConnections = ref(false);
@@ -51,7 +55,7 @@ function startChat(u) {
   <div class="messages-page">
     <div class="messages" :class="{ 'has-active': props.userId }">
       <aside class="messages__list">
-        <ConversationList :active-id="props.userId" @new-chat="openNewChat" />
+        <ConversationList :active-id="props.userId" :back-to="backTo" @new-chat="openNewChat" />
       </aside>
       <section class="messages__chat">
         <ChatPanel

@@ -29,6 +29,7 @@ export const useRealtimeStore = defineStore('realtime', () => {
     s.on('connect', () => {
       connected.value = true;
       chat.loadConversations().catch(() => {});
+      useProfessionsStore().load().catch(() => {});
     });
     s.on('disconnect', (reason) => {
       if (!isCurrent()) return;

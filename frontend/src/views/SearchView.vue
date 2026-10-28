@@ -11,6 +11,7 @@ import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import UiTabs from '@/components/ui/UiTabs.vue';
 import ProfileCard from '@/components/ProfileCard.vue';
 import ListingCard from '@/components/market/ListingCard.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -71,7 +72,8 @@ watch(tab, () => run(q.value));
 watch(
   () => route.query.q,
   (value) => {
-    if (typeof value === 'string' && value !== q.value.trim()) q.value = value;
+    const next = typeof value === 'string' ? value : '';
+    if (next !== q.value.trim()) q.value = next;
   },
 );
 
@@ -88,6 +90,7 @@ onMounted(async () => {
 
 <template>
   <div class="container search-page">
+    <BackButton />
     <header class="hero">
       <h1 class="page-title">Search everything</h1>
       <p class="muted">People, professions and things for sale, all in one place.</p>

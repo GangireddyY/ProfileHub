@@ -14,6 +14,7 @@ import UiSkeleton from '@/components/ui/UiSkeleton.vue';
 import UiTabs from '@/components/ui/UiTabs.vue';
 import ConnectButton from '@/components/ConnectButton.vue';
 import ProfessionBadge from '@/components/ProfessionBadge.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const auth = useAuthStore();
 const realtime = useRealtimeStore();
@@ -144,6 +145,7 @@ watch(
     </aside>
 
     <section class="page-main">
+      <BackButton />
       <header class="page-head">
         <div>
           <h1 class="page-title">Notifications</h1>

@@ -1,6 +1,6 @@
 <script setup>
-import { reactive, ref, computed, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { reactive, ref, computed, watch, nextTick } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   UserRound,
   MapPin,
@@ -14,9 +14,7 @@ import {
   Moon,
   Monitor,
   Save,
-  RefreshCw,
   Mail,
-  Navigation,
   KeyRound,
   Trash2,
   TriangleAlert,
@@ -26,6 +24,12 @@ import {
   CircleX,
   ShieldHalf,
   ChevronRight,
+  Contact,
+  Phone,
+  Pencil,
+  House,
+  Award,
+  BadgeIndianRupee,
 } from 'lucide-vue-next';
 import { useAuthStore } from '@/stores/auth';
 import { useThemeStore } from '@/stores/theme';
@@ -36,7 +40,9 @@ import { api, errorMessage, fieldErrors } from '@/api/http';
 import { DISTANCE_STEPS, stepForRadius } from '@/constants/filters';
 import { RATE_UNITS, CURRENCIES } from '@/constants/professions';
 import UiSelect from '@/components/ui/UiSelect.vue';
-import { timeAgo } from '@/utils/format';
+import { formatRate } from '@/utils/format';
+import ProfessionBadge from '@/components/ProfessionBadge.vue';
+import LocationCard from '@/components/LocationCard.vue';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiInput from '@/components/ui/UiInput.vue';
 import UiTextarea from '@/components/ui/UiTextarea.vue';
@@ -49,11 +55,13 @@ import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import ProfessionPicker from '@/components/ProfessionPicker.vue';
 import AvatarUploader from '@/components/profile/AvatarUploader.vue';
+import BackButton from '@/components/BackButton.vue';
 
 const auth = useAuthStore();
 const theme = useThemeStore();
 const geo = useGeolocation();
 const router = useRouter();
+const route = useRoute();
 const me = computed(() => auth.user);
 
 const professions = useProfessionsStore();
@@ -61,6 +69,7 @@ const professions = useProfessionsStore();
 const sections = [
   { id: 'profile', label: 'Profile', icon: UserRound },
   { id: 'work', label: 'Work & rates', icon: BriefcaseBusiness },
+  { id: 'contact', label: 'Contact details', icon: Contact },
   { id: 'location', label: 'Location & discovery', icon: MapPin },
   { id: 'security', label: 'Security', icon: KeyRound },
   { id: 'privacy', label: 'Privacy', icon: ShieldCheck },
@@ -81,6 +90,9 @@ const pickProfile = (u) => ({
   rateUnit: u.rateUnit || 'hour',
   currency: u.currency || 'INR',
   availableForWork: Boolean(u.availableForWork),
+  contactEmail: u.contactEmail || '',
+  phone: u.phone || '',
+  address: u.address || '',
 });
 const form = reactive(pickProfile(me.value));
 const errors = ref({});
@@ -98,6 +110,7 @@ async function saveProfile() {
       rateAmount: form.rateAmount === '' || form.rateAmount == null ? null : Number(form.rateAmount),
     });
     Object.assign(form, pickProfile(me.value));
+    editing.value = false;
     toast.success('Profile saved');
   } catch (err) {
     errors.value = fieldErrors(err);
@@ -111,6 +124,32 @@ function resetProfile() {
   Object.assign(form, pickProfile(me.value));
   errors.value = {};
 }
+
+/** The profile shows as read-only details until the user chooses to edit it. */
+const FORM_SECTIONS = ['work', 'contact'];
+const editing = ref(FORM_SECTIONS.includes(route.hash.slice(1)));
+
+function startEdit() {
+  resetProfile();
+  editing.value = true;
+}
+function cancelEdit() {
+  resetProfile();
+  editing.value = false;
+}
+
+const summary = computed(() => {
+  const u = me.value;
+  return [
+    { label: 'City', value: u.city, icon: MapPin },
+    { label: 'Experience', value: u.experienceYears ? `${u.experienceYears}+ years` : 'Getting started', icon: Award },
+    { label: 'Rate', value: formatRate(u) || 'Not set', icon: BadgeIndianRupee },
+    { label: 'Availability', value: u.availableForWork ? 'Available for work' : 'Not looking right now', icon: BriefcaseBusiness },
+    { label: 'Email', value: u.contactEmail, icon: Mail, href: u.contactEmail && `mailto:${u.contactEmail}` },
+    { label: 'Mobile', value: u.phone, icon: Phone, href: u.phone && `tel:${u.phone.replace(/[\s-]/g, '')}` },
+    { label: 'Address', value: u.address, icon: House, wide: true },
+  ];
+});
 
 // ---------- Profession requests ----------
 const myRequests = ref([]);
@@ -171,11 +210,6 @@ const shareLocation = computed({
   },
 });
 
-async function refreshLocation() {
-  if (await geo.locate()) toast.success('Location updated');
-  else toast.error(geo.error.value);
-}
-
 const showOnline = computed({
   get: () => me.value.showOnlineStatus,
   set: (v) => setSetting('showOnlineStatus', v, v ? 'Others can see when you are online' : 'You now appear offline to everyone'),
@@ -200,7 +234,11 @@ const themeOptions = [
   { value: 'system', label: 'System', icon: Monitor },
 ];
 
-function scrollTo(id) {
+async function scrollTo(id) {
+  if (FORM_SECTIONS.includes(id) && !editing.value) {
+    startEdit();
+    await nextTick();
+  }
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -281,6 +319,7 @@ async function deleteAccount() {
     </aside>
 
     <div class="page-main">
+      <BackButton />
       <header class="page-head">
         <div>
           <h1 class="page-title">Settings</h1>
@@ -295,11 +334,54 @@ async function deleteAccount() {
             <span class="section__icon"><UserRound /></span>
             <div>
               <h2 class="section-title">Profile</h2>
-              <p class="muted">This is what other members see on your profile.</p>
+              <p class="muted">
+                {{ editing ? 'Update your details, then save.' : 'This is what other members see on your profile.' }}
+              </p>
             </div>
           </header>
 
-          <form class="stack" style="--gap: 18px" novalidate @submit.prevent="saveProfile">
+          <div v-if="!editing" class="summary">
+            <div class="summary__top">
+              <UiAvatar :name="me.name" :src="me.avatarUrl" :size="72" />
+              <div class="summary__who">
+                <strong class="summary__name">{{ me.name }}</strong>
+                <span class="muted">{{ me.roleTitle || 'Add your role or title' }}</span>
+                <p v-if="me.headline" class="summary__headline">{{ me.headline }}</p>
+                <ProfessionBadge :profession="me.profession" size="sm" />
+              </div>
+              <div class="summary__actions">
+                <UiButton variant="secondary" size="sm" :icon="Eye" :to="`/u/${me.id}`">View public profile</UiButton>
+                <UiButton size="sm" :icon="Pencil" @click="startEdit">Edit profile</UiButton>
+              </div>
+            </div>
+
+            <dl class="summary__grid">
+              <div v-for="row in summary" :key="row.label" :class="{ 'summary__item--wide': row.wide }">
+                <span class="summary__icon"><component :is="row.icon" /></span>
+                <div class="summary__text">
+                  <dt>{{ row.label }}</dt>
+                  <dd v-if="row.value && row.href"><a :href="row.href">{{ row.value }}</a></dd>
+                  <dd v-else-if="row.value">{{ row.value }}</dd>
+                  <dd v-else class="summary__empty">Not added</dd>
+                </div>
+              </div>
+            </dl>
+
+            <div class="summary__block">
+              <h3 class="summary__label">About</h3>
+              <p v-if="me.bio" class="summary__bio">{{ me.bio }}</p>
+              <p v-else class="summary__empty">Tell people about your work, interests and what you're looking for.</p>
+            </div>
+            <div class="summary__block">
+              <h3 class="summary__label">Skills</h3>
+              <div v-if="me.skills?.length" class="summary__skills">
+                <span v-for="s in me.skills" :key="s" class="summary__skill">{{ s }}</span>
+              </div>
+              <p v-else class="summary__empty">No skills added yet.</p>
+            </div>
+          </div>
+
+          <form v-else class="stack" style="--gap: 18px" novalidate @submit.prevent="saveProfile">
             <AvatarUploader />
 
             <div class="form-grid form-grid--2">
@@ -371,13 +453,56 @@ async function deleteAccount() {
                 <UiSelect v-model="form.rateUnit" label="Charged" :options="unitOptions" :error="errors.rateUnit" />
               </div>
             </section>
+
+            <section id="contact" class="work">
+              <header class="work__head">
+                <span class="section__icon"><Contact /></span>
+                <div>
+                  <h3 class="section-title">Contact details</h3>
+                  <p class="muted">Only you and your connections can see these. Leave a field empty to keep it private.</p>
+                </div>
+              </header>
+              <div class="form-grid form-grid--2">
+                <UiInput
+                  v-model.trim="form.contactEmail"
+                  label="Email"
+                  type="email"
+                  maxlength="160"
+                  :icon="Mail"
+                  :placeholder="me.email"
+                  autocomplete="email"
+                  :error="errors.contactEmail"
+                  hint="Can differ from the email you sign in with"
+                />
+                <UiInput
+                  v-model.trim="form.phone"
+                  label="Mobile number"
+                  type="tel"
+                  maxlength="20"
+                  :icon="Phone"
+                  placeholder="+91 98765 43210"
+                  inputmode="tel"
+                  autocomplete="tel"
+                  :error="errors.phone"
+                />
+              </div>
+              <UiTextarea
+                v-model="form.address"
+                label="Address"
+                :maxlength="300"
+                :rows="3"
+                placeholder="House / flat, street, area, city, PIN code"
+                autocomplete="street-address"
+                :error="errors.address"
+              />
+            </section>
             <UiTextarea v-model="form.bio" label="About" :maxlength="2000" :rows="5" placeholder="Tell people about your work, interests and what you're looking for." :error="errors.bio" />
             <UiTagInput v-model="form.skills" label="Skills" placeholder="Add a skill and press Enter" :error="errors.skills" />
 
             <div class="form-actions" :class="{ 'is-dirty': dirty }">
               <span v-if="dirty" class="muted">You have unsaved changes</span>
               <div class="row" style="margin-left: auto">
-                <UiButton variant="ghost" :disabled="!dirty || saving" @click="resetProfile">Discard</UiButton>
+                <UiButton variant="ghost" :disabled="saving" @click="cancelEdit">Cancel</UiButton>
                 <UiButton type="submit" :icon="Save" :loading="saving" :disabled="!dirty">Save changes</UiButton>
               </div>
             </div>
@@ -403,16 +528,7 @@ async function deleteAccount() {
               :loading="pending.location || geo.loading.value"
             />
 
-            <div v-if="me.hasLocation" class="location-status">
-              <Navigation />
-              <div class="grow">
-                <strong>{{ me.city || 'Location set' }}</strong>
-                <span class="muted">Updated {{ timeAgo(me.locationUpdatedAt) }}</span>
-              </div>
-              <UiButton variant="secondary" size="sm" :icon="RefreshCw" :loading="geo.loading.value" @click="refreshLocation">
-                Update
-              </UiButton>
-            </div>
+            <LocationCard v-if="me.hasLocation" @address-saved="(address) => (form.address = address)" />
             <p v-if="geo.error.value" class="error-text">{{ geo.error.value }}</p>
 
             <UiRange
@@ -717,23 +833,121 @@ async function deleteAccount() {
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
-.location-status {
+.summary {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 18px;
+}
+.summary__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+.summary__who {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.summary__name {
+  font-size: 1.15rem;
+}
+.summary__headline {
+  font-size: 0.9rem;
+  color: var(--text-2);
+}
+.summary__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.summary__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
-  padding: 12px 14px;
+  margin: 0;
+  padding: 14px;
   border-radius: var(--radius);
-  background: var(--success-soft);
+  background: var(--surface-2);
 }
-.location-status > svg {
-  width: 20px;
-  height: 20px;
-  color: var(--success);
+.summary__grid > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
 }
-.location-status strong {
-  display: block;
+.summary__item--wide {
+  grid-column: 1 / -1;
 }
-.location-status span {
+.summary__icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+}
+.summary__icon svg {
+  width: 16px;
+  height: 16px;
+}
+.summary__text {
+  min-width: 0;
+}
+.summary__text dt {
+  font-size: 0.74rem;
+  color: var(--text-3);
+}
+.summary__text dd {
+  margin: 1px 0 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.summary__text dd a {
+  color: var(--primary);
+}
+.summary__text dd a:hover {
+  text-decoration: underline;
+}
+.summary__empty {
+  font-weight: 500;
+  color: var(--text-3);
+  font-size: 0.88rem;
+}
+.summary__block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.summary__label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+.summary__bio {
+  font-size: 0.92rem;
+  color: var(--text-2);
+  white-space: pre-line;
+}
+.summary__skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.summary__skill {
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 600;
   font-size: 0.82rem;
 }
 .error-text {

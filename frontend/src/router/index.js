@@ -127,8 +127,11 @@ router.beforeEach(async (to) => {
   if (to.meta.requiresAuth && !auth.isAuthed) {
     return { name: 'login', query: to.fullPath !== '/' ? { redirect: to.fullPath } : undefined };
   }
-  if (to.meta.guestOnly && auth.isAuthed) return { name: 'discover' };
-  if (to.meta.requiresAdmin && auth.user?.role !== 'admin') return { name: 'discover' };
+  // `?switch` lets a signed-in tab sign in as another account (sessions are per tab).
+  if (to.meta.guestOnly && auth.isAuthed && !to.query.switch) return { name: 'discover' };
+  if (to.meta.requiresAdmin && auth.user?.role !== 'admin') {
+    return { name: 'login', query: { redirect: to.fullPath, switch: 'admin' } };
+  }
 });
 
 router.afterEach((to) => {

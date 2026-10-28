@@ -9,7 +9,7 @@ import { toast } from '@/composables/useToast';
 import { LISTING_CATEGORIES } from '@/constants/marketplace';
 import UiCard from '@/components/ui/UiCard.vue';
 import UiButton from '@/components/ui/UiButton.vue';
-import UiChip from '@/components/ui/UiChip.vue';
+import UiSearchSelect from '@/components/ui/UiSearchSelect.vue';
 import UiSheet from '@/components/ui/UiSheet.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
@@ -118,10 +118,11 @@ watch(
 );
 watch(tab, () => load());
 
-function toggleCategory(key) {
-  const list = filters.value.categories;
-  filters.value.categories = list.includes(key) ? list.filter((c) => c !== key) : [...list, key];
-}
+const categoryFilter = computed({
+  get: () => ({ categories: filters.value.categories }),
+  set: ({ categories }) => (filters.value.categories = categories),
+});
+const categoryGroups = [{ key: 'categories', title: 'Categories', options: LISTING_CATEGORIES }];
 
 function resetFilters() {
   filters.value = { ...DEFAULTS, q: filters.value.q };
@@ -174,7 +175,7 @@ onMounted(() => {
 
       <UiTabs v-model="tab" :tabs="tabs" />
 
-      <div class="searchbar">
+      <div class="page-toolbar">
         <label class="searchbar__field">
           <Search class="searchbar__icon" />
           <input
@@ -188,6 +189,13 @@ onMounted(() => {
             <X />
           </button>
         </label>
+        <UiSearchSelect
+          v-if="!isMine"
+          v-model="categoryFilter"
+          :groups="categoryGroups"
+          all-label="All categories"
+          placeholder="Search categories"
+        />
         <button v-if="!isMine" type="button" class="filter-btn" aria-label="Open filters" @click="filtersOpen = true">
           <SlidersHorizontal />
           <span class="filter-btn__text">Filters</span>
@@ -195,28 +203,12 @@ onMounted(() => {
         </button>
       </div>
 
-      <template v-if="!isMine">
-        <div class="scroll-x chips" role="group" aria-label="Filter by category">
-          <UiChip :active="!filters.categories.length" @click="filters.categories = []">All</UiChip>
-          <UiChip
-            v-for="c in LISTING_CATEGORIES"
-            :key="c.key"
-            :icon="c.icon"
-            :hue="c.hue"
-            :active="filters.categories.includes(c.key)"
-            @click="toggleCategory(c.key)"
-          >
-            {{ c.label }}
-          </UiChip>
-        </div>
+      <div v-if="!isMine && sellerId" class="seller-filter">
+        <UserRound /> Showing listings by <strong>{{ sellerName }}</strong>
+        <button type="button" aria-label="Show all listings" @click="clearSeller"><X /></button>
+      </div>
 
-        <div v-if="sellerId" class="seller-filter">
-          <UserRound /> Showing listings by <strong>{{ sellerName }}</strong>
-          <button type="button" aria-label="Show all listings" @click="clearSeller"><X /></button>
-        </div>
-      </template>
-
-      <div v-else-if="stats && items.length" class="my-stats">
+      <div v-if="stats && items.length" class="my-stats">
         <div><strong>{{ stats.active }}</strong><span>Active</span></div>
         <div><strong>{{ stats.sold }}</strong><span>Sold</span></div>
         <div><strong><Eye /> {{ stats.views }}</strong><span>Total views</span></div>
@@ -309,10 +301,6 @@ onMounted(() => {
   height: 22px;
 }
 
-.searchbar {
-  display: flex;
-  gap: 10px;
-}
 .searchbar__field {
   flex: 1;
   position: relative;
@@ -388,11 +376,6 @@ onMounted(() => {
   background: var(--primary);
   color: #fff;
   font-size: 0.72rem;
-}
-.chips {
-  padding-bottom: 2px;
-  margin-inline: calc(-1 * var(--page-pad));
-  padding-inline: var(--page-pad);
 }
 .seller-filter {
   display: flex;
@@ -500,10 +483,6 @@ onMounted(() => {
   .filter-btn,
   .head-sell {
     display: none;
-  }
-  .chips {
-    margin-inline: 0;
-    padding-inline: 0;
   }
 }
 </style>

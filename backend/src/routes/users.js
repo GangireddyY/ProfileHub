@@ -58,6 +58,13 @@ const profileSchema = z
       .transform((list) => [...new Map(list.map((s) => [s.toLowerCase(), s])).values()]),
     experienceYears: z.coerce.number().int().min(0).max(70),
     city: z.string().trim().max(100),
+    contactEmail: z.union([z.literal(''), z.email('Enter a valid email address').max(160)]),
+    phone: z
+      .string()
+      .trim()
+      .max(20)
+      .regex(/^$|^\+?[0-9][0-9\s-]{6,18}$/, 'Enter a valid mobile number, e.g. +91 98765 43210'),
+    address: z.string().trim().max(300, 'Address can be at most 300 characters'),
   })
   .partial();
 
@@ -70,10 +77,25 @@ const settingsSchema = z
   })
   .partial();
 
+const place = (max = 100) => z.string().trim().max(max).optional().default('');
 const locationSchema = z.object({
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
   city: z.string().trim().max(100).optional(),
+  details: z
+    .object({
+      road: place(),
+      area: place(),
+      city: place(),
+      district: place(),
+      state: place(),
+      postcode: place(20),
+      country: place(),
+      countryCode: place(4),
+      displayName: place(400),
+      accuracy: z.coerce.number().min(0).max(1_000_000).nullable().optional().default(null),
+    })
+    .optional(),
 });
 
 function recommendationScore(me, user, distanceKm, categoryOf) {
@@ -94,8 +116,11 @@ router.get('/discover', async (req, res) => {
 
   const where = { id: { [Op.ne]: me.id }, discoverable: true };
   const and = [];
-  if (f.professions.length) and.push({ profession: { [Op.in]: f.professions } });
-  if (f.categories.length) and.push({ profession: { [Op.in]: await professionKeysInCategories(f.categories) } });
+  // Picked professions and categories widen each other (OR), like any multi-select filter.
+  if (f.professions.length || f.categories.length) {
+    const inCategories = f.categories.length ? await professionKeysInCategories(f.categories) : [];
+    and.push({ profession: { [Op.in]: [...new Set([...f.professions, ...inCategories])] } });
+  }
   if (f.onlineOnly) Object.assign(where, { isOnline: true, showOnlineStatus: true });
   if (f.availableOnly) where.availableForWork = true;
   if (f.maxRate != null) where.rateAmount = { [Op.ne]: null, [Op.lte]: f.maxRate };
@@ -159,7 +184,7 @@ router.patch('/me/settings', async (req, res) => {
   const presenceChanged = patch.showOnlineStatus !== undefined && patch.showOnlineStatus !== req.user.showOnlineStatus;
 
   if (patch.shareLocation === false) {
-    Object.assign(patch, { latitude: null, longitude: null, locationUpdatedAt: null });
+    Object.assign(patch, { latitude: null, longitude: null, locationUpdatedAt: null, locationDetails: null });
   }
   await req.user.update(patch);
   if (presenceChanged) await broadcastPresence(req.user.id);
@@ -168,15 +193,28 @@ router.patch('/me/settings', async (req, res) => {
 });
 
 router.put('/me/location', async (req, res) => {
-  const { latitude, longitude, city } = validate(locationSchema, req.body);
-  const patch = { latitude, longitude, shareLocation: true, locationUpdatedAt: new Date() };
-  if (city && !req.user.city) patch.city = city;
+  const { latitude, longitude, city, details } = validate(locationSchema, req.body);
+  const patch = {
+    latitude,
+    longitude,
+    shareLocation: true,
+    locationUpdatedAt: new Date(),
+    locationDetails: details ?? null,
+  };
+  // The profile city follows the shared location so it never contradicts the distance others see.
+  if (city) patch.city = city;
   await req.user.update(patch);
   res.json({ user: await buildSelf(req.user) });
 });
 
 router.delete('/me/location', async (req, res) => {
-  await req.user.update({ latitude: null, longitude: null, locationUpdatedAt: null, shareLocation: false });
+  await req.user.update({
+    latitude: null,
+    longitude: null,
+    locationUpdatedAt: null,
+    locationDetails: null,
+    shareLocation: false,
+  });
   res.json({ user: await buildSelf(req.user) });
 });
 
@@ -208,7 +246,10 @@ router.get('/:id', async (req, res) => {
       }))
     : [];
 
-  res.json({ user: { ...decorated, isMe: false, mutualCount: mutualIds.length, mutualPreview, experiences, ...listings } });
+  const contact = decorated.connectionStatus === 'connected' ? user.toContact() : null;
+  res.json({
+    user: { ...decorated, isMe: false, contact, mutualCount: mutualIds.length, mutualPreview, experiences, ...listings },
+  });
 });
 
 async function recentListings(sellerId) {

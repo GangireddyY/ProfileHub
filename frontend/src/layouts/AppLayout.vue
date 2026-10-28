@@ -46,8 +46,8 @@ const isAdmin = computed(() => me.value?.role === 'admin');
 
 const topQuery = ref('');
 watch(
-  () => route.query.q,
-  (q) => (topQuery.value = route.name === 'search' && typeof q === 'string' ? q : topQuery.value),
+  () => [route.name, route.query.q],
+  ([name, q]) => (topQuery.value = name === 'search' && typeof q === 'string' ? q : ''),
   { immediate: true },
 );
 function submitSearch() {
@@ -215,9 +215,9 @@ function logout() {
   top: 0;
   z-index: 50;
   height: var(--nav-h);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
-  backdrop-filter: saturate(180%) blur(14px);
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-xs);
 }
 .topbar__inner {
   height: 100%;

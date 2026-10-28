@@ -1,11 +1,11 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { api, TOKEN_KEY } from '@/api/http';
+import { api, getToken, saveToken, clearToken } from '@/api/http';
 import { useRealtimeStore } from './realtime';
 import { useChatStore } from './chat';
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref(localStorage.getItem(TOKEN_KEY));
+  const token = ref(getToken());
   const user = ref(null);
   const ready = ref(false);
 
@@ -14,14 +14,20 @@ export const useAuthStore = defineStore('auth', () => {
   function setSession(data) {
     token.value = data.token;
     user.value = data.user;
-    localStorage.setItem(TOKEN_KEY, data.token);
+    saveToken(data.token);
     useRealtimeStore().connect();
   }
 
   function clearSession() {
     token.value = null;
     user.value = null;
-    localStorage.removeItem(TOKEN_KEY);
+    clearToken();
+  }
+
+  /** Drops the live socket and cached chats of the account currently signed in to this tab. */
+  function endRealtime() {
+    useRealtimeStore().disconnect();
+    useChatStore().reset();
   }
 
   async function fetchMe() {
@@ -44,18 +50,20 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(credentials) {
     const { data } = await api.post('/auth/login', credentials);
+    // Switching accounts within this tab: the old account's socket must not stay connected.
+    if (token.value) endRealtime();
     setSession(data);
   }
 
   async function signup(payload) {
     const { data } = await api.post('/auth/signup', payload);
+    if (token.value) endRealtime();
     setSession(data);
     return data;
   }
 
   function logout() {
-    useRealtimeStore().disconnect();
-    useChatStore().reset();
+    endRealtime();
     clearSession();
   }
 

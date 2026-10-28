@@ -9,8 +9,13 @@ import UiAvatar from '@/components/ui/UiAvatar.vue';
 import UiButton from '@/components/ui/UiButton.vue';
 import UiEmpty from '@/components/ui/UiEmpty.vue';
 import UiSkeleton from '@/components/ui/UiSkeleton.vue';
+import BackButton from '@/components/BackButton.vue';
 
-defineProps({ activeId: { type: String, default: '' } });
+defineProps({
+  activeId: { type: String, default: '' },
+  /** Where the back arrow leads: the page the user came from before opening Messages. */
+  backTo: { type: [String, Object], default: '/' },
+});
 const emit = defineEmits(['new-chat']);
 
 const auth = useAuthStore();
@@ -27,7 +32,10 @@ const items = computed(() => {
 <template>
   <div class="clist">
     <header class="clist__head">
-      <h1 class="page-title">Messages</h1>
+      <div class="clist__title">
+        <BackButton icon-only :to="backTo" />
+        <h1 class="page-title">Messages</h1>
+      </div>
       <UiButton variant="soft" size="sm" :icon="SquarePen" icon-only aria-label="New message" @click="emit('new-chat')" />
     </header>
 
@@ -101,6 +109,15 @@ const items = computed(() => {
   align-items: center;
   justify-content: space-between;
   padding: 18px 16px 12px;
+}
+.clist__title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.clist__title .back-btn {
+  align-self: center;
 }
 .clist__search {
   position: relative;
