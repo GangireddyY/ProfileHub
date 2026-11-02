@@ -819,7 +819,8 @@ onBeforeUnmount(() => {
   transition: opacity 0.15s var(--ease);
 }
 .msg:hover .msg__menu,
-.msg__menu:focus-within {
+.msg__menu:focus-within,
+.msg__menu.is-open {
   opacity: 1;
 }
 @media (pointer: coarse) {
